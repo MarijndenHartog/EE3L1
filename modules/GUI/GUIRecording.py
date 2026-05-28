@@ -3,6 +3,7 @@ import numpy as np
 import wave
 from PyQt5 import QtWidgets, QtCore
 import pyqtgraph as pg
+from settings import SAMPLE_RATE, NORMAL_WINDOW_MS, TRIGGER_WINDOW_MS, REFRESH_FPS
 
 
 class MakeRecordingTab(QtWidgets.QWidget):
@@ -13,10 +14,10 @@ class MakeRecordingTab(QtWidgets.QWidget):
         self.pipeline = pipeline
         self.controller = controller
 
-        self.SAMPLE_RATE = 10000
-        self.NORMAL_WINDOW_MS = 1000
-        self.TRIGGER_WINDOW_MS = 10
-        self.REFRESH_FPS = 30
+        self.SAMPLE_RATE = SAMPLE_RATE
+        self.NORMAL_WINDOW_MS = NORMAL_WINDOW_MS
+        self.TRIGGER_WINDOW_MS = TRIGGER_WINDOW_MS
+        self.REFRESH_FPS = REFRESH_FPS
 
         self.VISIBLE_SAMPLES = int(self.SAMPLE_RATE * self.NORMAL_WINDOW_MS / 1000)
         self.TRIGGER_VISIBLE_SAMPLES = int(self.SAMPLE_RATE * self.TRIGGER_WINDOW_MS / 1000)

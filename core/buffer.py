@@ -1,9 +1,9 @@
 import numpy as np
 from threading import Lock
-
+from settings import BUFFER_SIZE
 
 class CircularBuffer:
-    def __init__(self, size=100000):
+    def __init__(self, size=BUFFER_SIZE):
         self.size = size
         self.buffer = np.zeros(size, dtype=np.int16)
 

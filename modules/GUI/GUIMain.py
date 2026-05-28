@@ -26,10 +26,10 @@ from PyQt5.QtWidgets import (QMainWindow, QApplication, QSpinBox, QFileDialog,
                              QCheckBox, QLabel, QDoubleSpinBox, QMessageBox)
 from modules.GUI.Ui_SpikeAnalysis import Ui_MainWindow
 from modules.GUI import GUIFunctions
-from pipeline.pipeline import SignalPipeline
+from core.pipeline import SignalPipeline
 from datasource.synthetic_source import SyntheticDataSource
 from modules.GUI.GUIRecording import MakeRecordingTab
-from pipeline.controller import DeviceController
+from core.controller import DeviceController
 
 class Main(QMainWindow, Ui_MainWindow):
     def __init__(self):

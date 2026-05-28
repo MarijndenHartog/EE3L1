@@ -1,8 +1,9 @@
-from pipeline.buffer import CircularBuffer
+from core.buffer import CircularBuffer
+from settings import BUFFER_SIZE
 
 
 class SignalPipeline:
-    def __init__(self, buffer_size=100000):
+    def __init__(self, buffer_size=BUFFER_SIZE):
         self.buffer = CircularBuffer(buffer_size)
         self.streaming_enabled = False
 

@@ -1,10 +1,11 @@
 import threading
 import time
 import numpy as np
+from settings import SAMPLE_RATE
 
 
 class SyntheticDataSource:
-    def __init__(self, pipeline, controller, sample_rate=12000, chunk_size=256):
+    def __init__(self, pipeline, controller, sample_rate=SAMPLE_RATE, chunk_size=256):
         self.pipeline = pipeline
         self.controller = controller
 
