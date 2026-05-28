@@ -1,0 +1,1325 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QGridLayout" name="gridLayout_13">
+    <item row="0" column="0">
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="0" column="0" colspan="3">
+       <widget class="QTabWidget" name="tabWidget">
+        <property name="toolTip">
+         <string/>
+        </property>
+        <property name="currentIndex">
+         <number>0</number>
+        </property>
+        <widget class="QWidget" name="Tab_Recording">
+         <attribute name="title">
+          <string>Open recording</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Open recording.
+Used to import and view the raw signal data.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_2">
+          <item row="5" column="7">
+           <widget class="QLabel" name="lbl_markersloaded">
+            <property name="text">
+             <string>No markers</string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="8">
+           <widget class="QPushButton" name="btn_import">
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Import data</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="7" colspan="2">
+           <widget class="QLineEdit" name="le_identifier"/>
+          </item>
+          <item row="6" column="6">
+           <widget class="QLabel" name="label_14">
+            <property name="text">
+             <string>Identifier: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="6">
+           <widget class="QLabel" name="label_15">
+            <property name="text">
+             <string>Data type: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="4">
+           <spacer name="horizontalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="3" column="7" colspan="2">
+           <widget class="QLabel" name="lbl_datatype">
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="7">
+           <spacer name="verticalSpacer_12">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="5" column="8">
+           <widget class="QPushButton" name="btn_loadmarkers">
+            <property name="text">
+             <string>Load from file</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="6">
+           <widget class="QLabel" name="label_13">
+            <property name="text">
+             <string>Markers: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="6">
+           <widget class="QLabel" name="label_12">
+            <property name="text">
+             <string>Framerate: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="6">
+           <widget class="QLabel" name="lbl_filesnr">
+            <property name="toolTip">
+             <string>Signal to Noise Ratio (SNR) of the signal.
+SNR denotes the ratio between the average and the average plus the standard deviation, giving a proportion that can be used as a guidance in how noisy the signal appears to be.</string>
+            </property>
+            <property name="text">
+             <string>SNR: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="6">
+           <widget class="QLabel" name="label_10">
+            <property name="text">
+             <string>File:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="7" colspan="2">
+           <widget class="QLabel" name="lbl_filename">
+            <property name="toolTip">
+             <string>Name of the imported file.</string>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="6">
+           <widget class="QLabel" name="label_16">
+            <property name="text">
+             <string>Shape: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="7" colspan="2">
+           <widget class="QLabel" name="lbl_fileshape">
+            <property name="toolTip">
+             <string>Shape of the imported file (rows, columns).
+The rows should be the amount of channels and the columns the amount of datapoints per channel.</string>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="7" colspan="2">
+           <widget class="QComboBox" name="cb_channelsnr"/>
+          </item>
+          <item row="0" column="0" rowspan="8" colspan="6">
+           <widget class="QtCanvas" name="plt_container_raw" native="true"/>
+          </item>
+          <item row="2" column="7" colspan="2">
+           <widget class="QSpinBox" name="sp_framerate">
+            <property name="maximum">
+             <number>999999999</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_Raw">
+         <attribute name="title">
+          <string>Filters</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Filters.
+Used for filtering your signal.
+In the rightside plots, the fourier transform is displayed, this can be used as a guideline to filtering your signal.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_3">
+          <item row="2" column="4">
+           <spacer name="verticalSpacer_11">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="4" column="6">
+           <widget class="QPushButton" name="btn_setfilters">
+            <property name="toolTip">
+             <string>Show the selected filters in the plots, but do not apply them to the stored data.
+Note that after time frames have been applied in data selection, filters are no longer applicable.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>View filtered data</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="4">
+           <spacer name="verticalSpacer_4">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="4" column="2">
+           <spacer name="horizontalSpacer_4">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="4" column="3">
+           <spacer name="horizontalSpacer_10">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="1" column="4">
+           <spacer name="verticalSpacer_10">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="4" column="8">
+           <widget class="QPushButton" name="btn_savefilt">
+            <property name="toolTip">
+             <string>Save the stored data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Save data</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="4">
+           <spacer name="verticalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="0" column="0">
+           <widget class="QWidget" name="widget" native="true">
+            <property name="toolTip">
+             <string>Determines how narrow the desired frequency is filtered.
+Default is 30.</string>
+            </property>
+            <layout class="QFormLayout" name="formLayout">
+             <item row="2" column="0">
+              <widget class="QCheckBox" name="ch_notch">
+               <property name="toolTip">
+                <string>Filter out a single frequency</string>
+               </property>
+               <property name="text">
+                <string>Notch</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QSpinBox" name="sp_notch">
+               <property name="suffix">
+                <string> Hz</string>
+               </property>
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>99999</number>
+               </property>
+               <property name="value">
+                <number>50</number>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="0">
+              <widget class="QCheckBox" name="ch_highpass">
+               <property name="toolTip">
+                <string>Everything below this frequency will be filtered out.</string>
+               </property>
+               <property name="text">
+                <string>High pass</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QCheckBox" name="ch_lowpass">
+               <property name="toolTip">
+                <string>Everything above this frequency will be filtered out.</string>
+               </property>
+               <property name="text">
+                <string>Low pass</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QSpinBox" name="sp_bandpasslow">
+               <property name="suffix">
+                <string> Hz</string>
+               </property>
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>99999</number>
+               </property>
+               <property name="value">
+                <number>500</number>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QSpinBox" name="sp_bandpasshigh">
+               <property name="suffix">
+                <string> Hz</string>
+               </property>
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>99999</number>
+               </property>
+               <property name="value">
+                <number>1</number>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="label_17">
+               <property name="toolTip">
+                <string>Determines steepness of the filter. Higher value can filter unwanted signals better, but requires more computation and can cause phase shifts.
+Default is 2.</string>
+               </property>
+               <property name="text">
+                <string>Order (bandpass)</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QLabel" name="lbl_order">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QLabel" name="label_19">
+               <property name="text">
+                <string>Quality (notch)</string>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="1">
+              <widget class="QLabel" name="lbl_quality">
+               <property name="text">
+                <string/>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="4" column="7">
+           <widget class="QPushButton" name="btn_applyfilt">
+            <property name="toolTip">
+             <string>Apply the filters to the stored data.
+Note that after time frames have been applied in data selection, filters are no longer applicable.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Apply filters</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="5" rowspan="2" colspan="4">
+           <widget class="QtCanvas" name="plt_fftfilt" native="true"/>
+          </item>
+          <item row="2" column="2" rowspan="2" colspan="2">
+           <widget class="QtCanvas" name="plt_container_filt" native="true"/>
+          </item>
+          <item row="0" column="2" rowspan="2" colspan="2">
+           <widget class="QtCanvas" name="plt_container_unfilt" native="true"/>
+          </item>
+          <item row="0" column="5" rowspan="2" colspan="4">
+           <widget class="QtCanvas" name="plt_fft" native="true"/>
+          </item>
+          <item row="4" column="5">
+           <spacer name="horizontalSpacer_16">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_DataSel">
+         <attribute name="title">
+          <string>Data selection</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Data selection.
+Used for selecting parts of your data to analyse, this can be done on a time and/or channel basis.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_5">
+          <item row="3" column="3">
+           <widget class="QPushButton" name="btn_viewdatasel">
+            <property name="toolTip">
+             <string>Show the selected data in the plot, but don't apply it to the stored data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>View data selection</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="6">
+           <widget class="QtCanvas" name="plt_container_datasel" native="true"/>
+          </item>
+          <item row="3" column="4">
+           <widget class="QPushButton" name="btn_applydatasel">
+            <property name="toolTip">
+             <string>Apply the data selection to the stored data.
+Note that after applying with time frames selected, filters can no longer be applied.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Apply data selection</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="6">
+           <spacer name="verticalSpacer_5">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="0" rowspan="2">
+           <widget class="QScrollArea" name="sa_timeframes">
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContents">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>251</width>
+               <height>48</height>
+              </rect>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_4">
+              <item row="0" column="1">
+               <widget class="QPushButton" name="btn_removetime">
+                <property name="toolTip">
+                 <string>Remove the last time frame</string>
+                </property>
+                <property name="text">
+                 <string>-</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="0">
+               <widget class="QLabel" name="label">
+                <property name="toolTip">
+                 <string>Fill in the time frames</string>
+                </property>
+                <property name="text">
+                 <string>Time frames</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="2">
+               <widget class="QPushButton" name="btn_addtime">
+                <property name="toolTip">
+                 <string>Add another time frame.</string>
+                </property>
+                <property name="text">
+                 <string>+</string>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <spacer name="verticalSpacer_9">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item row="0" column="3">
+               <spacer name="horizontalSpacer_14">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </widget>
+          </item>
+          <item row="3" column="5">
+           <widget class="QPushButton" name="btn_savedatasel">
+            <property name="toolTip">
+             <string>Save the stored data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Save data</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1" rowspan="2">
+           <widget class="QScrollArea" name="sa_channels">
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContents_3">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>98</width>
+               <height>40</height>
+              </rect>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout">
+              <item>
+               <widget class="QLabel" name="label_5">
+                <property name="toolTip">
+                 <string>Select the channels.</string>
+                </property>
+                <property name="text">
+                 <string>Channels</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="verticalSpacer_7">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </widget>
+          </item>
+          <item row="2" column="4">
+           <spacer name="verticalSpacer">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="2">
+           <widget class="QLabel" name="lbl_markers">
+            <property name="text">
+             <string>Markers:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="2">
+           <widget class="QPushButton" name="btn_loadmarkers_2">
+            <property name="text">
+             <string>Load markers</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_SpikeSorting">
+         <attribute name="title">
+          <string>Spike sorting</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Spike sorting.
+Used for detecting and clustering of spikes.
+Spikes can be detected and sorted on the basis of thresholds with a recurrence value.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_7">
+          <item row="2" column="5">
+           <widget class="QPushButton" name="btn_savespikes">
+            <property name="toolTip">
+             <string>Save the stored data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Save data</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="3">
+           <widget class="QtCanvas" name="plt_container_spike" native="true"/>
+          </item>
+          <item row="2" column="3">
+           <spacer name="horizontalSpacer_11">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="0" column="3" rowspan="2" colspan="4">
+           <widget class="QtCanvas" name="plt_sortingpreview" native="true"/>
+          </item>
+          <item row="2" column="4">
+           <widget class="QPushButton" name="btn_spikesort">
+            <property name="toolTip">
+             <string>Detect and sort spikes based on amplitude.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Sort spikes</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" colspan="3">
+           <widget class="QScrollArea" name="sa_thresholds">
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContents_2">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>329</width>
+               <height>129</height>
+              </rect>
+             </property>
+             <layout class="QGridLayout" name="gridLayout_6">
+              <item row="2" column="1">
+               <widget class="QPushButton" name="btn_removethreshold">
+                <property name="toolTip">
+                 <string>Remove the last threshold.</string>
+                </property>
+                <property name="text">
+                 <string>-</string>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="2">
+               <widget class="QPushButton" name="btn_addthreshold">
+                <property name="toolTip">
+                 <string>Add another threshold.</string>
+                </property>
+                <property name="text">
+                 <string>+</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="3">
+               <spacer name="horizontalSpacer_15">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item row="4" column="1">
+               <spacer name="verticalSpacer_3">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item row="0" column="2">
+               <widget class="QDoubleSpinBox" name="dsp_recurrence">
+                <property name="maximum">
+                 <double>1.000000000000000</double>
+                </property>
+                <property name="singleStep">
+                 <double>0.100000000000000</double>
+                </property>
+                <property name="value">
+                 <double>0.800000000000000</double>
+                </property>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="label_2">
+                <property name="text">
+                 <string>Thresholds</string>
+                </property>
+               </widget>
+              </item>
+              <item row="3" column="0">
+               <widget class="QSpinBox" name="sps_thresholds">
+                <property name="suffix">
+                 <string> A.U.</string>
+                </property>
+                <property name="minimum">
+                 <number>-999999999</number>
+                </property>
+                <property name="maximum">
+                 <number>999999999</number>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="2">
+               <widget class="QSpinBox" name="sp_cutoff">
+                <property name="suffix">
+                 <string> A.U.</string>
+                </property>
+                <property name="minimum">
+                 <number>-999999999</number>
+                </property>
+                <property name="maximum">
+                 <number>999999999</number>
+                </property>
+               </widget>
+              </item>
+              <item row="1" column="0" colspan="2">
+               <widget class="QCheckBox" name="ch_cutoff">
+                <property name="text">
+                 <string>Cut-off threshold</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="0" colspan="2">
+               <widget class="QLabel" name="label_6">
+                <property name="toolTip">
+                 <string>Recurrence denotes the proportion of the thresholds the signal has to go below before searching for a new spike.</string>
+                </property>
+                <property name="text">
+                 <string>Threshold recurrence</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </widget>
+          </item>
+          <item row="2" column="6">
+           <widget class="QPushButton" name="btn_exportcsv">
+            <property name="toolTip">
+             <string>Export cluster spike times as csv file.
+Requires spike sorting data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Export as .csv</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="2">
+           <spacer name="horizontalSpacer_13">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="0">
+           <spacer name="horizontalSpacer_12">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="0" column="7">
+           <spacer name="verticalSpacer_6">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="1">
+           <spacer name="horizontalSpacer_3">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_AverageWaveform">
+         <attribute name="title">
+          <string>Average waveform</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Average waveform.
+Used for viewing the average waveform of the clusters, which can be helpful in cluster evaluation.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_8">
+          <item row="1" column="1">
+           <widget class="QPushButton" name="btn_getwaveforms">
+            <property name="toolTip">
+             <string>Show the average waveform plot per clusters.
+Requires spike sorting data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Average waveforms</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <spacer name="horizontalSpacer_5">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="0" column="0" colspan="2">
+           <widget class="QTabWidget" name="plt_container_waveforms">
+            <property name="currentIndex">
+             <number>-1</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_ISI">
+         <attribute name="title">
+          <string>Interspike interval</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Interspike interval.
+Used for checking the duration between spikes, which can be used for cluster evaluation.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_9">
+          <item row="1" column="0">
+           <spacer name="horizontalSpacer_6">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>647</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="btn_getisi">
+            <property name="toolTip">
+             <string>Show the interspike interval.
+Requires spikes sorting data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Interspike interval</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="2">
+           <widget class="QtCanvas" name="plt_container_isi" native="true"/>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_Amplitude">
+         <attribute name="title">
+          <string>Amplitude distribution</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Amplitude distribution.
+Used for checking the distribution of the amplitudes per cluster, which can be used for cluster evalution.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_10">
+          <item row="1" column="0">
+           <spacer name="horizontalSpacer_7">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>621</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="1" column="1">
+           <widget class="QPushButton" name="btn_getamplitude">
+            <property name="toolTip">
+             <string>Show the amplitude distribution.
+Requires spike sorting data.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Amplitude distribution</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="2">
+           <widget class="QtCanvas" name="plt_container_amplitude" native="true"/>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_Autocorr">
+         <attribute name="title">
+          <string>Auto-correlation</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Auto-correlation.
+Used for spiketrain detection.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_11">
+          <item row="1" column="3">
+           <spacer name="horizontalSpacer_8">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>653</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="1" column="4">
+           <widget class="QPushButton" name="btn_getautocorr">
+            <property name="toolTip">
+             <string>Show the auto-correlation plot per clusters.
+Requires spikes to be sorted.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Auto-correlation</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_8">
+            <property name="toolTip">
+             <string>The time window in seconds after each spike in which other spikes are searched for.</string>
+            </property>
+            <property name="text">
+             <string>Timeframe after each spike</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0" colspan="5">
+           <widget class="QTabWidget" name="plt_container_autocorr">
+            <property name="currentIndex">
+             <number>-1</number>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QDoubleSpinBox" name="dsp_autotime">
+            <property name="suffix">
+             <string>s</string>
+            </property>
+            <property name="decimals">
+             <number>3</number>
+            </property>
+            <property name="value">
+             <double>2.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="Tab_Crosscorr">
+         <attribute name="title">
+          <string>Cross-correlation</string>
+         </attribute>
+         <attribute name="toolTip">
+          <string>Cross-correlation.
+Used for spiketrain detection between clusters.</string>
+         </attribute>
+         <layout class="QGridLayout" name="gridLayout_12">
+          <item row="2" column="2">
+           <widget class="QLabel" name="label_9">
+            <property name="toolTip">
+             <string>The time window in seconds before each spike in which other spikes are searched for.</string>
+            </property>
+            <property name="text">
+             <string>Time before and after each spike</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QComboBox" name="cb_crossch2"/>
+          </item>
+          <item row="0" column="7">
+           <spacer name="verticalSpacer_8">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="0">
+           <widget class="QComboBox" name="cb_crossch1"/>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string>Cluster</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="6">
+           <widget class="QPushButton" name="btn_getcrosscorr">
+            <property name="toolTip">
+             <string>Show the cross-correlation plot between selected clusters/marker.
+Requires spikes to be sorted.</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">background-color: rgb(0, 255, 0);</string>
+            </property>
+            <property name="text">
+             <string>Cross-correlation</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QComboBox" name="cb_crosscl2"/>
+          </item>
+          <item row="2" column="3">
+           <widget class="QDoubleSpinBox" name="dsp_crosstime">
+            <property name="suffix">
+             <string>s</string>
+            </property>
+            <property name="decimals">
+             <number>3</number>
+            </property>
+            <property name="value">
+             <double>2.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QComboBox" name="cb_crosscl1"/>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>Channel/Marker</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2" colspan="4">
+           <spacer name="horizontalSpacer_9">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>483</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="0" column="0" colspan="7">
+           <widget class="QtCanvas" name="plt_container_crosscorr" native="true"/>
+          </item>
+         </layout>
+        </widget> 
+        <widget class="QWidget" name="Tab_Recording">
+         <attribute name="title">
+          <string>Recording</string>
+         </attribute>
+         <layout class="QVBoxLayout" name="verticalLayout_osc">
+          <item>
+           <widget class="QWidget" name="Recording_container"/>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item row="1" column="1">
+       <widget class="QPushButton" name="Btn_Previous">
+        <property name="text">
+         <string>Previous</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="Btn_Next">
+        <property name="text">
+         <string>Next</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="2">
+       <widget class="QPushButton" name="Btn_Exit">
+        <property name="text">
+         <string>Quit</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuMenu">
+    <property name="title">
+     <string>Menu</string>
+    </property>
+    <addaction name="actionImport_file"/>
+    <addaction name="actionBatch_analysis"/>
+    <addaction name="separator"/>
+    <addaction name="actionFile_history"/>
+    <addaction name="separator"/>
+    <addaction name="actionReset"/>
+   </widget>
+   <addaction name="menuMenu"/>
+  </widget>
+  <action name="actionImport_file">
+   <property name="text">
+    <string>Import file...</string>
+   </property>
+  </action>
+  <action name="actionBatch_analysis">
+   <property name="text">
+    <string>Batch analysis</string>
+   </property>
+  </action>
+  <action name="actionFile_history">
+   <property name="text">
+    <string>File history</string>
+   </property>
+  </action>
+  <action name="actionReset">
+   <property name="text">
+    <string>Reset</string>
+   </property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QtCanvas</class>
+   <extends>QWidget</extends>
+   <header>QtMplCanvas.py</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
