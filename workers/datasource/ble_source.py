@@ -39,13 +39,19 @@ class BLESource(threading.Thread):
     # ============================================================   
     def cmd_start(self):
         self._state = SourceState.STARTING
-        self.ack_start.clear()
+
         ... send start command to BLE device ...
+        
+        # Wait for BLE device to acknowledge start
+        self.ack_start.set() 
 
     def cmd_stop(self):
         self._state = SourceState.STOPPING
-        self.ack_stop.clear()
+        
         ... send stop command to BLE device ...
+        
+        # Wait for BLE device to acknowledge stop
+        self.ack_stop.set() 
 
     # ============================================================
     # THREAD CONTROL
