@@ -2,8 +2,13 @@ import threading
 import time
 import numpy as np
 
+from workers.datasource.source_abstraction import (
+    DataSource,
+    SourceState
+)
 
-class SyntheticBLESource(threading.Thread):
+
+class SyntheticBLESource(threading.Thread, DataSource):
 
     def __init__(
         self,
@@ -16,40 +21,73 @@ class SyntheticBLESource(threading.Thread):
         super().__init__(daemon=True)
 
         self.ring = ring_buffer
+
         self.sample_rate = sample_rate
         self.channels = channels
         self.packet_size = packet_size
-
         self.noise_level = noise_level
 
-        self._running = True
-        self.phase = 0
+        self._running = False
+        self._streaming = False
 
-    # -------------------------
-    # SPIKE SIGNAL GENERATOR
-    # -------------------------
-    def generate_samples(self, num_samples):
+        self.state = SourceState.DISCONNECTED
+        print(f"Source state: {self.state}")
 
-        # 1. noise (smoothed)
-        noise = np.random.randn(num_samples)
-        noise = np.convolve(noise, np.ones(5) / 5, mode='same') * self.noise_level
+    # ============================================================
+    # CONTROL
+    # ============================================================
+    def cmd_start(self):
 
-        # 2. spikes
-        spikes = np.zeros(num_samples)
+        self._streaming = True
+        self.state = SourceState.STREAMING
+        print(f"Source state: {self.state}")
+
+    def cmd_stop(self):
+
+        self._streaming = False
+        self.state = SourceState.READY
+        print(f"Source state: {self.state}")
+
+    def is_streaming(self):
+        print(f"Source state: {self.state}")
+        return self.state == SourceState.STREAMING
+    
+
+    # ============================================================
+    # SIGNAL GENERATION
+    # ============================================================
+    def generate(self, n):
+
+        noise = np.random.randn(n)
+        noise = np.convolve(
+            noise,
+            np.ones(5) / 5,
+            mode='same'
+        ) * self.noise_level
+
+        spikes = np.zeros(n)
 
         i = 0
-        while i < num_samples:
+
+        while i < n:
 
             if np.random.rand() < 0.0002:
 
-                amp = np.random.choice([2000, 3000, 4000, 5000])
+                amp = np.random.choice(
+                    [2000, 3000, 4000, 5000]
+                )
+
                 width = np.random.randint(5, 12)
 
                 for w in range(width):
-                    if i + w < num_samples:
-                        rise = (1 - np.exp(-w / 2.0))
-                        decay = np.exp(-w / 3.0)
-                        spikes[i + w] += amp * rise * decay
+
+                    if i + w < n:
+
+                        spikes[i + w] += (
+                            amp *
+                            (1 - np.exp(-w / 2)) *
+                            np.exp(-w / 3)
+                        )
 
                 i += np.random.randint(25, 80)
 
@@ -58,30 +96,76 @@ class SyntheticBLESource(threading.Thread):
 
         signal = noise + spikes
 
-        return np.clip(signal, -8192, 8191).astype(np.int16)
+        return np.clip(
+            signal,
+            -8192,
+            8191
+        ).astype(np.int16)
 
-    # -------------------------
+    # ============================================================
     # THREAD LOOP
-    # -------------------------
+    # ============================================================
     def run(self):
 
-        dt = 1.0 / self.sample_rate
+        dt = self.packet_size / self.sample_rate
+
+        self._running = True
+        self.state = SourceState.READY
 
         while self._running:
 
-            # generate block
-            ch1 = self.generate_samples(self.packet_size)
-            ch2 = (ch1 * 0.8 + np.random.randn(self.packet_size) * 50).astype(np.int16)
+            if not self._streaming:
+                time.sleep(0.01)
+                continue
 
-            packet = np.stack([ch1, ch2], axis=1)
+            packet_loss_prob = 0.001
 
-            # write to buffer
+            if np.random.rand() < packet_loss_prob:
+                time.sleep(dt)
+                continue
+
+            ch1 = self.generate(self.packet_size)
+
+            ch2 = (
+                ch1 * 0.8 +
+                np.random.randn(self.packet_size) * 50
+            ).astype(np.int16)
+
+            packet = np.stack(
+                [ch1, ch2],
+                axis=1
+            )
+
             self.ring.write(packet)
 
-            time.sleep(self.packet_size / self.sample_rate)
+            jitter = np.random.uniform(
+                -0.002,
+                0.002
+            )
 
-    # -------------------------
-    # STOP
-    #--------------------------
+            sleep_time = max(
+                0,
+                dt + jitter
+            )
+
+            time.sleep(sleep_time)
+
+        self.state = SourceState.DISCONNECTED
+        print(f"Source state: {self.state}")
+
+    # ============================================================
+    # THREAD CONTROL
+    # ============================================================
+    def start(self):
+
+        if self.is_alive():
+            return
+
+        super().start()
+
     def stop(self):
+
+        self._streaming = False
         self._running = False
+        self.state = SourceState.DISCONNECTED
+        print(f"Source state: {self.state}")

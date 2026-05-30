@@ -2,7 +2,7 @@ from PyQt5 import QtWidgets, QtCore
 import numpy as np
 import pyqtgraph as pg
 
-from settings.settings import SAMPLE_RATE, TRIGGER_WINDOW_MS, NORMAL_WINDOW_MS, UPPER_THRESHOLD, LOWER_THRESHOLD
+from settings.settings import UPDATE_TIME, SAMPLE_RATE, TRIGGER_WINDOW_MS, NORMAL_WINDOW_MS, UPPER_THRESHOLD, LOWER_THRESHOLD
 
 
 class RecordingTab(QtWidgets.QWidget):
@@ -37,7 +37,7 @@ class RecordingTab(QtWidgets.QWidget):
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
-        self.timer.start(30)
+        self.timer.start(UPDATE_TIME)
 
     # ============================================================
     # UI
