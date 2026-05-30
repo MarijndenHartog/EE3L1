@@ -1,6 +1,7 @@
 import threading
 import time
 import numpy as np
+from settings.settings import SAMPLE_RATE, CHANNELS, PACKET_SIZE
 
 from workers.datasource.source_abstraction import (
     DataSource,
@@ -13,9 +14,9 @@ class SyntheticBLESource(threading.Thread, DataSource):
     def __init__(
         self,
         ring_buffer,
-        sample_rate=12000,
-        channels=2,
-        packet_size=96,
+        sample_rate=SAMPLE_RATE,
+        channels=CHANNELS,
+        packet_size=PACKET_SIZE,
         noise_level=300,
     ):
         super().__init__(daemon=True)
@@ -31,7 +32,6 @@ class SyntheticBLESource(threading.Thread, DataSource):
         self._streaming = False
 
         self.state = SourceState.DISCONNECTED
-        print(f"Source state: {self.state}")
 
     # ============================================================
     # CONTROL
@@ -40,16 +40,13 @@ class SyntheticBLESource(threading.Thread, DataSource):
 
         self._streaming = True
         self.state = SourceState.STREAMING
-        print(f"Source state: {self.state}")
 
     def cmd_stop(self):
 
         self._streaming = False
         self.state = SourceState.READY
-        print(f"Source state: {self.state}")
 
     def is_streaming(self):
-        print(f"Source state: {self.state}")
         return self.state == SourceState.STREAMING
     
 
@@ -151,7 +148,6 @@ class SyntheticBLESource(threading.Thread, DataSource):
             time.sleep(sleep_time)
 
         self.state = SourceState.DISCONNECTED
-        print(f"Source state: {self.state}")
 
     # ============================================================
     # THREAD CONTROL
@@ -168,4 +164,3 @@ class SyntheticBLESource(threading.Thread, DataSource):
         self._streaming = False
         self._running = False
         self.state = SourceState.DISCONNECTED
-        print(f"Source state: {self.state}")

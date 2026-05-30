@@ -4,17 +4,16 @@ from workers.writer import WAVWriter
 from buffers.raw_buffer import CircularBuffer
 from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
-from settings.settings import REAL_DATA
+from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE, BLE_ADDRESS, CMD_UUID, DATA_UUID
 from workers.datasource.ble_source import BLESource
-from settings.settings import BLE_ADDRESS, CMD_UUID, DATA_UUID
 
 
 class RecordingEngine:
 
-    def __init__(self, sample_rate=12000, REAL_DATA=REAL_DATA):
+    def __init__(self, sample_rate=SAMPLE_RATE, REAL_DATA=REAL_DATA, channels=CHANNELS):
 
         self.sample_rate = sample_rate
-        self.channels = 2
+        self.channels = channels
         self.REAL_DATA = REAL_DATA
 
         # -------------------------
@@ -59,7 +58,7 @@ class RecordingEngine:
                 address=BLE_ADDRESS,
                 cmd_uuid=CMD_UUID,
                 data_uuid=DATA_UUID,
-                channels=2
+                channels=self.channels
             )
 
         else:
