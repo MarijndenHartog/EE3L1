@@ -6,6 +6,8 @@ from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
 from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE, BLE_ADDRESS, CMD_UUID, DATA_UUID
 from workers.datasource.ble_source import BLESource
+from core.marker_logger import MarkerLogger
+import time
 
 
 class RecordingEngine:
@@ -39,14 +41,33 @@ class RecordingEngine:
         self.dsp = None
         self.writer = None
         self.source = None
-
-        # create SOURCE (BLE or synthetic)
+        
+        # -------------------------
+        # SESSION 
+        # -------------------------       
+        self.session_id = None
+        self.marker_logger = None
+        self.global_sample_index = 0
+        
         self._init_source()
-
         self._running = False
+        
+    # ============================================================
+    # SESSION INIT
+    # ============================================================
+    def start_session(self):
+
+        self.session_id = time.strftime("%Y%m%d_%H%M%S")
+
+        self.marker_logger = MarkerLogger(
+            output_prefix="session",
+            session_id=self.session_id
+        )
+
+        return self.session_id
 
     # ============================================================
-    # SOURCE FACTORY (CLEAN SEPARATION)
+    # SOURCE FACTORY 
     # ============================================================
     def _init_source(self):
 
@@ -54,7 +75,7 @@ class RecordingEngine:
 
 
             self.source = BLESource(
-                ring_buffer=self.raw_buffer,
+                pipeline=self.pipeline,
                 address=BLE_ADDRESS,
                 cmd_uuid=CMD_UUID,
                 data_uuid=DATA_UUID,
@@ -62,10 +83,10 @@ class RecordingEngine:
             )
 
         else:
-            self.source = SyntheticBLESource(self.raw_buffer)
+            self.source = SyntheticBLESource(self.pipeline)
 
     # ============================================================
-    # START ENGINE (DSP + WRITER ONLY)
+    # START ENGINE 
     # ============================================================
     def start(self):
 
@@ -73,17 +94,21 @@ class RecordingEngine:
             return
 
         self._running = True
+        
+        if self.session_id is None:
+            self.start_session()
 
         self.dsp = DSPThread(
             ring_buffer=self.raw_buffer,
-            processed_buffer=self.proc_buffer,
+            pipeline=self.pipeline,
             dsp_state=self.dsp_state
         )
 
         self.writer = WAVWriter(
             ring_buffer=self.raw_buffer,
             sample_rate=self.sample_rate,
-            consumer_name="logger",
+            session_id=self.session_id,
+            consumer_name="writer",
             flush_interval_seconds=5.0,
             output_prefix="session"
         )
@@ -109,6 +134,19 @@ class RecordingEngine:
 
         if self.writer and self.writer.is_alive():
             self.writer.join(timeout=2)
+            
+        if self.marker_logger:
+            self.marker_logger.stop()
 
     def get_pipeline(self):
         return self.pipeline
+    
+    def add_marker(self, marker_id):
+
+        if self.marker_logger is None:
+            return
+
+        sample_idx = self.pipeline.get_sample_index()
+        t = sample_idx / self.sample_rate
+
+        self.marker_logger.add(marker_id, t)

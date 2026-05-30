@@ -31,6 +31,8 @@ class RecordingTab(QtWidgets.QWidget):
         self.TRIGGER_VISIBLE_SAMPLES = int(
             self.sample_rate * TRIGGER_WINDOW_MS / 1000
         )
+        
+        self.markers = [] 
 
         self.init_ui()
         self.update_thresholds()
@@ -142,9 +144,18 @@ class RecordingTab(QtWidgets.QWidget):
     # ============================================================
     # PLOT UPDATE
     # ============================================================
+    def set_markers_visible(self, visible: bool):
+        for _, _, line in self.markers:
+            line.setVisible(visible)
+    
     def update_plot(self):
+        
+        if self.trigger_mode:
+            self.set_markers_visible(False)
+        else:
+            self.set_markers_visible(True)
 
-        data = self.pipeline.get_processed_latest(self.NORMAL_VISIBLE_SAMPLES) 
+        data = self.pipeline.get_processed(self.NORMAL_VISIBLE_SAMPLES) 
         data = np.asarray(data)
 
         if data.size == 0:
@@ -172,6 +183,9 @@ class RecordingTab(QtWidgets.QWidget):
 
             self.plot1.setXRange(0, NORMAL_WINDOW_MS)
             self.plot2.setXRange(0, NORMAL_WINDOW_MS)
+            
+            window_end = self.pipeline.get_sample_index()
+            self.update_marker_positions(window_end)
 
             return
         
@@ -217,3 +231,57 @@ class RecordingTab(QtWidgets.QWidget):
 
         self.plot1.setXRange(0, TRIGGER_WINDOW_MS)
         self.plot2.setXRange(0, TRIGGER_WINDOW_MS)
+        
+        
+    def keyPressEvent(self, event):
+
+        if not self.running:
+            return
+
+        key = event.key()
+
+        if QtCore.Qt.Key_1 <= key <= QtCore.Qt.Key_9:
+
+            marker_id = key - QtCore.Qt.Key_0
+            idx = self.pipeline.get_sample_index()
+
+            self.controller.engine.add_marker(marker_id)
+            self.add_marker(marker_id, idx)
+            
+    def add_marker(self, marker_id, idx):
+
+        colors = {
+            1: 'r', 2: 'g', 3: 'b', 4: 'y', 5: 'm',
+            6: 'c', 7: 'w', 8: (255,165,0), 9: (128,0,128)
+        }
+
+        line = pg.InfiniteLine(
+            angle=90,
+            pen=pg.mkPen(colors.get(marker_id, 'r'), width=2)
+        )
+
+        self.plot1.addItem(line)
+
+        self.markers.append((marker_id, idx, line))
+        
+    def update_marker_positions(self, window_end):
+
+        window_size = self.NORMAL_VISIBLE_SAMPLES
+        window_start = window_end - window_size
+
+        for marker_id, idx, line in self.markers:
+
+            # skip if outside window
+            if idx < window_start or idx > window_end:
+                line.setVisible(False)
+                continue
+
+            line.setVisible(True)
+
+            # relative position in samples (NOT time conversion here)
+            x_samples = idx - window_start
+
+            # convert to time only for display axis
+            x_ms = (x_samples / self.sample_rate) * 1000
+
+            line.setPos(x_ms)

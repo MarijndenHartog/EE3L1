@@ -60,7 +60,7 @@ class ProcessedBuffer:
     # ============================================================
     # GUI READ (last N samples)
     # ============================================================
-    def read_latest(self, max_samples: int):
+    def read(self, max_samples: int):
         """
         Return last N samples in correct time order.
         Always returns contiguous time-ordered array.

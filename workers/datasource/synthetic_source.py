@@ -13,7 +13,7 @@ class SyntheticBLESource(threading.Thread, DataSource):
 
     def __init__(
         self,
-        ring_buffer,
+        pipeline,
         sample_rate=SAMPLE_RATE,
         channels=CHANNELS,
         packet_size=PACKET_SIZE,
@@ -21,7 +21,7 @@ class SyntheticBLESource(threading.Thread, DataSource):
     ):
         super().__init__(daemon=True)
 
-        self.ring = ring_buffer
+        self.pipeline = pipeline
         self.sample_rate = sample_rate
         self.channels = channels
         self.packet_size = packet_size
@@ -135,7 +135,7 @@ class SyntheticBLESource(threading.Thread, DataSource):
             ).astype(np.int16)
 
             packet = np.stack([ch1, ch2], axis=1)
-            self.ring.write(packet)
+            self.pipeline.push_raw(packet)
 
             # -------------------------
             # TIMING (no drift version)

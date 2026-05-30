@@ -5,7 +5,7 @@ from workers.datasource.source_abstraction import SourceState
 
 class BLESource(threading.Thread):
     def __init__(self, 
-        ring_buffer, 
+        pipeline, 
         address, 
         sample_rate=SAMPLE_RATE, 
         channels=CHANNELS, 
@@ -13,7 +13,7 @@ class BLESource(threading.Thread):
     ):
         super().__init__()
         
-        self.ring = ring_buffer
+        self.pipeline = pipeline
         self.address = address
         self.sample_rate = sample_rate
         self.channels = channels
@@ -32,7 +32,7 @@ class BLESource(threading.Thread):
     def run(self):
         # Format np.int16 data into (packet_size, channels) and write to ring buffer
         #packet = np.stack([ch1, ch2], axis=1)
-        #self.ring.write(packet)
+        #self.pipeline.push_raw(packet)
         return
     
     # ============================================================

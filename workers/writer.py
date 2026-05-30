@@ -6,13 +6,14 @@ import wave
 
 class WAVWriter(threading.Thread):
 
-    def __init__(self, ring_buffer, sample_rate, **kwargs):
+    def __init__(self, ring_buffer, sample_rate, session_id=None, **kwargs):
         super().__init__(daemon=True)
 
         self.ring = ring_buffer
         self.sample_rate = sample_rate
+        self.session_id = session_id
 
-        self.consumer_name = kwargs.get("consumer_name", "logger")
+        self.consumer_name = kwargs.get("consumer_name", "writer")
         self.output_prefix = kwargs.get("output_prefix", "session")
         self.max_chunk = kwargs.get("max_chunk", 2048)
 
@@ -53,8 +54,7 @@ class WAVWriter(threading.Thread):
     def run(self):
 
         # open file ONCE per session
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        self._filename = f"{self.output_prefix}_{timestamp}.wav"
+        self._filename = f"{self.output_prefix}_{self.session_id}.wav"
 
         self._file = wave.open(self._filename, "wb")
         self._file.setnchannels(2)      # stereo

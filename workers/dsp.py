@@ -1,6 +1,6 @@
 import threading
 import time
-
+from core.pipeline import Pipeline
 
 class DSPState:
     """
@@ -33,7 +33,7 @@ class DSPThread(threading.Thread):
     def __init__(
         self,
         ring_buffer,
-        processed_buffer,
+        pipeline: Pipeline,
         dsp_state: DSPState,
         consumer_name="dsp",
         block_size=256
@@ -41,7 +41,7 @@ class DSPThread(threading.Thread):
         super().__init__(daemon=True)
 
         self.ring = ring_buffer
-        self.out = processed_buffer
+        self.pipeline = pipeline
         self.state = dsp_state
 
         self.consumer_name = consumer_name
@@ -69,7 +69,7 @@ class DSPThread(threading.Thread):
             processed = chunk
 
             # 3. forward to GUI buffer
-            self.out.write(processed)
+            self.pipeline.push_processed(processed)
 
             # small sleep to avoid 100% CPU spin
             time.sleep(0.001)

@@ -638,4 +638,4 @@ class Main(QMainWindow, Ui_MainWindow):
         """Method to reset the GUI"""
         self.exitcode=1
         self.close()
-    
+        
