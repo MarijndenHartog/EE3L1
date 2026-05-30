@@ -33,8 +33,3 @@ class DataSource(ABC):
     @abstractmethod
     def cmd_stop(self):
         pass
-
-
-    @abstractmethod
-    def state(self):
-        pass

@@ -28,10 +28,11 @@ class BLESource(threading.Thread):
         self.ack_start = threading.Event()
         self.ack_stop = threading.Event()
 
+
     def run(self):
         # Format np.int16 data into (packet_size, channels) and write to ring buffer
-        packet = np.stack([ch1, ch2], axis=1)
-        self.ring.write(packet)
+        #packet = np.stack([ch1, ch2], axis=1)
+        #self.ring.write(packet)
         return
     
     # ============================================================
@@ -40,7 +41,7 @@ class BLESource(threading.Thread):
     def cmd_start(self):
         self._state = SourceState.STARTING
 
-        ... send start command to BLE device ...
+        #... send start command to BLE device ...
         
         # Wait for BLE device to acknowledge start
         self.ack_start.set() 
@@ -48,7 +49,7 @@ class BLESource(threading.Thread):
     def cmd_stop(self):
         self._state = SourceState.STOPPING
         
-        ... send stop command to BLE device ...
+        #... send stop command to BLE device ...
         
         # Wait for BLE device to acknowledge stop
         self.ack_stop.set() 
@@ -67,7 +68,7 @@ class BLESource(threading.Thread):
         self._streaming = False
         self._running = False
         self.state = SourceState.DISCONNECTED
-        
+
 
    
         
