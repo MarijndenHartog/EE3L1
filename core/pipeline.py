@@ -1,17 +1,25 @@
-from core.buffer import CircularBuffer
-from settings import BUFFER_SIZE
+import numpy as np
 
+class Pipeline:
+    """
+    Pure data pipeline:
+    - geen GUI
+    - geen start/stop
+    - alleen data toegang
+    """
 
-class SignalPipeline:
-    def __init__(self, buffer_size=BUFFER_SIZE):
-        self.buffer = CircularBuffer(buffer_size)
-        self.streaming_enabled = False
+    def __init__(self, raw_buffer, proc_buffer):
+        self.raw = raw_buffer
+        self.proc = proc_buffer
 
-    def push_data(self, samples):
-        if not self.streaming_enabled:
-            return  
+    # -------------------------
+    # RAW (optioneel)
+    # -------------------------
+    def get_raw_latest(self, n):
+        return self.raw.read_latest(n)
 
-        self.buffer.write(samples)
-
-    def get_view(self, n):
-        return self.buffer.read_last(n)
+    # -------------------------
+    # PROCESSED (GUI used)
+    # -------------------------
+    def get_processed_latest(self, n):
+        return self.proc.read_latest(n)

@@ -3,7 +3,7 @@ import numpy as np
 import wave
 from PyQt5 import QtWidgets, QtCore
 import pyqtgraph as pg
-from settings import SAMPLE_RATE, NORMAL_WINDOW_MS, TRIGGER_WINDOW_MS, REFRESH_FPS
+from settings.settings import SAMPLE_RATE, NORMAL_WINDOW_MS, TRIGGER_WINDOW_MS, REFRESH_FPS
 
 
 class MakeRecordingTab(QtWidgets.QWidget):

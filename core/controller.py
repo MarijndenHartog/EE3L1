@@ -1,57 +1,25 @@
-import time
+class RecordingController:
 
-class DeviceController:
-    """
-    Owns:
-    - handshake state (future BLE)
-    - streaming state
-    - gating for all data sources
-    """
-
-    def __init__(self, pipeline):
-        self.pipeline = pipeline
-
-        self.connected = False
-        self.streaming = False
-        self.handshake_done = False
+    def __init__(self, engine):
+        self.engine = engine
+        self.recording = False
 
     # -------------------------
-    # CONNECTION LAYER
+    # GUI CALLS THIS
     # -------------------------
-    def connect(self):
-        if self.connected:
+    def start(self):
+        if self.recording:
             return
 
-        print("Connecting to device... (handshake)")
+        self.recording = True
+        self.engine.start()
 
-        # placeholder for BLE discovery + GATT setup
-        time.sleep(0.5)
-
-        self.handshake_done = True
-        self.connected = True
-
-        print("Device connected + handshake complete")
-
-    def disconnect(self):
-        self.connected = False
-        self.handshake_done = False
-        self.streaming = False
-
-        self.pipeline.streaming_enabled = False
-
-        print("Device disconnected")
-
-    # -------------------------
-    # STREAM CONTROL
-    # -------------------------
-    def start_stream(self):
-        if not self.handshake_done:
-            print("Cannot start: device not connected")
+    def stop(self):
+        if not self.recording:
             return
 
-        self.streaming = True
-        self.pipeline.streaming_enabled = True
+        self.recording = False
+        self.engine.stop()
 
-    def stop_stream(self):
-        self.streaming = False
-        self.pipeline.streaming_enabled = False
+    def get_pipeline(self):
+        return self.engine.get_pipeline()

@@ -17,7 +17,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-import sys
 import os
 import numpy as np
 from collections import defaultdict
@@ -26,10 +25,11 @@ from PyQt5.QtWidgets import (QMainWindow, QApplication, QSpinBox, QFileDialog,
                              QCheckBox, QLabel, QDoubleSpinBox, QMessageBox)
 from modules.GUI.Ui_SpikeAnalysis import Ui_MainWindow
 from modules.GUI import GUIFunctions
-from core.pipeline import SignalPipeline
-from datasource.synthetic_source import SyntheticDataSource
-from modules.GUI.GUIRecording import MakeRecordingTab
-from core.controller import DeviceController
+from core.pipeline import Pipeline
+from core.engine import RecordingEngine
+from core.controller import RecordingController
+from modules.GUI.GUIRecording import RecordingTab
+from settings.settings import SAMPLE_RATE, CHANNELS
 
 class Main(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -84,13 +84,10 @@ class Main(QMainWindow, Ui_MainWindow):
         #All data
         self.SetFulldata()
         
-        
-        self.pipeline = SignalPipeline()
-        self.controller = DeviceController(self.pipeline)
-        self.datasource = SyntheticDataSource(self.pipeline, self.controller)
-        self.datasource.start()
-        self.recording = MakeRecordingTab(self.pipeline, self.controller)
-        self.tabWidget.insertTab(0, self.recording, "Make recording")
+        self.engine = RecordingEngine()
+        self.controller = RecordingController(self.engine)
+        self.recording_tab = RecordingTab(self.controller)
+        self.tabWidget.insertTab(0, self.recording_tab, "Recording")
         
         #Plot canvasses
         self.cnvs_rawrecording=self.plt_container_raw.canvas
