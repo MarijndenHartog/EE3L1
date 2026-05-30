@@ -2,12 +2,19 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 
-class SourceState(Enum):
-    DISCONNECTED = 0
-    READY = 1
-    STREAMING = 2
-    ERROR = 3
+from enum import Enum
 
+
+class SourceState(Enum):
+
+    DISCONNECTED = 0
+    CONNECTING = 1
+    CONNECTED = 2
+    READY = 3
+    STARTING = 4   
+    STREAMING = 5 
+    STOPPING = 6   
+    ERROR = 7
 
 class DataSource(ABC):
 
@@ -27,6 +34,7 @@ class DataSource(ABC):
     def cmd_stop(self):
         pass
 
+
     @abstractmethod
-    def is_streaming(self):
+    def state(self):
         pass

@@ -22,7 +22,6 @@ class SyntheticBLESource(threading.Thread, DataSource):
         super().__init__(daemon=True)
 
         self.ring = ring_buffer
-
         self.sample_rate = sample_rate
         self.channels = channels
         self.packet_size = packet_size
@@ -31,29 +30,31 @@ class SyntheticBLESource(threading.Thread, DataSource):
         self._running = False
         self._streaming = False
 
+        self.ack_start = threading.Event()
+        self.ack_stop = threading.Event()
+
         self.state = SourceState.DISCONNECTED
 
     # ============================================================
     # CONTROL
     # ============================================================
     def cmd_start(self):
-
         self._streaming = True
         self.state = SourceState.STREAMING
 
-    def cmd_stop(self):
+        self.ack_start.set()   
 
+    def cmd_stop(self):
         self._streaming = False
         self.state = SourceState.READY
 
-    def is_streaming(self):
-        return self.state == SourceState.STREAMING
-    
+        self.ack_stop.set()  
+ 
 
     # ============================================================
     # SIGNAL GENERATION
     # ============================================================
-    def generate(self, n):
+    def _generate(self, n):
 
         noise = np.random.randn(n)
         noise = np.convolve(
@@ -107,47 +108,44 @@ class SyntheticBLESource(threading.Thread, DataSource):
         dt = self.packet_size / self.sample_rate
 
         self._running = True
-        self.state = SourceState.READY
+        next_t = time.perf_counter()
 
         while self._running:
 
             if not self._streaming:
                 time.sleep(0.01)
+                next_t = time.perf_counter()
                 continue
 
-            packet_loss_prob = 0.001
-
-            if np.random.rand() < packet_loss_prob:
-                time.sleep(dt)
+            # -------------------------
+            # PACKET LOSS
+            # -------------------------
+            if np.random.rand() < 0.001:
+                next_t += dt
                 continue
 
-            ch1 = self.generate(self.packet_size)
+            # -------------------------
+            # SIGNAL
+            # -------------------------
+            ch1 = self._generate(self.packet_size)
 
             ch2 = (
                 ch1 * 0.8 +
                 np.random.randn(self.packet_size) * 50
             ).astype(np.int16)
 
-            packet = np.stack(
-                [ch1, ch2],
-                axis=1
-            )
-
+            packet = np.stack([ch1, ch2], axis=1)
             self.ring.write(packet)
 
-            jitter = np.random.uniform(
-                -0.002,
-                0.002
-            )
+            # -------------------------
+            # TIMING (no drift version)
+            # -------------------------
+            next_t += dt
 
-            sleep_time = max(
-                0,
-                dt + jitter
-            )
+            sleep_time = next_t - time.perf_counter()
 
-            time.sleep(sleep_time)
-
-        self.state = SourceState.DISCONNECTED
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     # ============================================================
     # THREAD CONTROL
