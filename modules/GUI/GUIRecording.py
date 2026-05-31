@@ -2,16 +2,23 @@ from PyQt5 import QtWidgets, QtCore
 import numpy as np
 import pyqtgraph as pg
 
-from settings.settings import UPDATE_TIME, SAMPLE_RATE, TRIGGER_WINDOW_MS, NORMAL_WINDOW_MS, UPPER_THRESHOLD, LOWER_THRESHOLD
+from settings.settings import (
+    UPDATE_TIME,
+    SAMPLE_RATE,
+    TRIGGER_WINDOW_MS,
+    NORMAL_WINDOW_MS,
+    UPPER_THRESHOLD,
+    LOWER_THRESHOLD
+)
 
 
 class RecordingTab(QtWidgets.QWidget):
 
-    def __init__(self, controller, parent=None):
+    def __init__(self, engine, parent=None):
         super().__init__(parent)
 
-        self.controller = controller
-        self.pipeline = controller.get_pipeline()
+        self.engine = engine
+        self.pipeline = self.engine.get_pipeline()
 
         self.sample_rate = SAMPLE_RATE
 
@@ -21,18 +28,18 @@ class RecordingTab(QtWidgets.QWidget):
         self.upper_threshold = UPPER_THRESHOLD
         self.lower_threshold = LOWER_THRESHOLD
 
-        # trigger memory
-        self.last_trigger_index = -1
-        
+        self.last_trigger_index_ch1 = -1
+        self.last_trigger_index_ch2 = -1
+
         self.NORMAL_VISIBLE_SAMPLES = int(
             self.sample_rate * NORMAL_WINDOW_MS / 1000
         )
-        
+
         self.TRIGGER_VISIBLE_SAMPLES = int(
             self.sample_rate * TRIGGER_WINDOW_MS / 1000
         )
-        
-        self.markers = [] 
+
+        self.markers = []
 
         self.init_ui()
         self.update_thresholds()
@@ -50,7 +57,6 @@ class RecordingTab(QtWidgets.QWidget):
 
         layout = QtWidgets.QHBoxLayout(self)
 
-        # ---------------- CONTROLS ----------------
         controls = QtWidgets.QVBoxLayout()
 
         self.btn = QtWidgets.QPushButton("Start")
@@ -79,7 +85,6 @@ class RecordingTab(QtWidgets.QWidget):
         controls.addWidget(self.lower_box)
         controls.addStretch()
 
-        # ---------------- PLOTS ----------------
         pg_layout = QtWidgets.QVBoxLayout()
 
         self.plot1 = pg.PlotWidget(title="Channel 1")
@@ -88,12 +93,10 @@ class RecordingTab(QtWidgets.QWidget):
         self.curve1 = self.plot1.plot(pen='y')
         self.curve2 = self.plot2.plot(pen='c')
 
-        # stable y-axis (IMPORTANT)
         for p in (self.plot1, self.plot2):
             p.setYRange(-1000, 2000)
             p.showGrid(x=True, y=True)
 
-        # trigger lines
         self.upper_line1 = pg.InfiniteLine(angle=0, pen='r')
         self.lower_line1 = pg.InfiniteLine(angle=0, pen='b')
 
@@ -120,10 +123,10 @@ class RecordingTab(QtWidgets.QWidget):
 
         if self.running:
             self.btn.setText("Stop")
-            self.controller.start()
+            self.engine.start()
         else:
             self.btn.setText("Start")
-            self.controller.stop()
+            self.engine.stop()
 
     def toggle_trigger_mode(self):
         self.trigger_mode = self.trigger_btn.isChecked()
@@ -142,26 +145,75 @@ class RecordingTab(QtWidgets.QWidget):
         self.lower_line2.setValue(self.lower_threshold)
 
     # ============================================================
-    # PLOT UPDATE
+    # MARKERS
     # ============================================================
     def set_markers_visible(self, visible: bool):
         for _, _, line in self.markers:
             line.setVisible(visible)
-    
-    def update_plot(self):
-        
-        if self.trigger_mode:
-            self.set_markers_visible(False)
-        else:
-            self.set_markers_visible(True)
 
-        data = self.pipeline.get_processed(self.NORMAL_VISIBLE_SAMPLES) 
+    def add_marker(self, marker_id, idx):
+
+        colors = {
+            1: 'r', 2: 'g', 3: 'b', 4: 'y', 5: 'm',
+            6: 'c', 7: 'w', 8: (255, 165, 0), 9: (128, 0, 128)
+        }
+
+        line = pg.InfiniteLine(
+            angle=90,
+            pen=pg.mkPen(colors.get(marker_id, 'r'), width=2)
+        )
+
+        self.plot1.addItem(line)
+        self.markers.append((marker_id, idx, line))
+
+    def update_marker_positions(self, window_end):
+
+        window_size = self.NORMAL_VISIBLE_SAMPLES
+        window_start = window_end - window_size
+
+        for marker_id, idx, line in self.markers:
+
+            if idx < window_start or idx > window_end:
+                line.setVisible(False)
+                continue
+
+            line.setVisible(True)
+
+            x_samples = idx - window_start
+            x_ms = (x_samples / self.sample_rate) * 1000
+            line.setPos(x_ms)
+
+    # ============================================================
+    # TRIGGER DRAW
+    # ============================================================
+    def _draw_trigger_segment(self, trigger_idx, ch, curve, plot):
+
+        pre = self.TRIGGER_VISIBLE_SAMPLES // 2
+        post = self.TRIGGER_VISIBLE_SAMPLES - pre
+
+        start_i = max(0, trigger_idx - pre)
+        end_i = min(len(ch), trigger_idx + post)
+
+        seg = ch[start_i:end_i]
+
+        if len(seg) < self.TRIGGER_VISIBLE_SAMPLES:
+            pad_len = self.TRIGGER_VISIBLE_SAMPLES - len(seg)
+            seg = np.pad(seg, (0, pad_len), mode='edge')
+
+        t = np.arange(len(seg)) * 1000 / self.sample_rate
+
+        curve.setData(t, seg)
+        plot.setXRange(0, TRIGGER_WINDOW_MS)
+
+    # ============================================================
+    # UPDATE LOOP
+    # ============================================================
+    def update_plot(self):
+
+        data = self.pipeline.get_processed(self.NORMAL_VISIBLE_SAMPLES)
         data = np.asarray(data)
 
-        if data.size == 0:
-            return
-
-        if data.ndim != 2 or data.shape[1] < 2:
+        if data.size == 0 or data.ndim != 2 or data.shape[1] < 2:
             return
 
         ch1 = data[:, 0]
@@ -172,67 +224,59 @@ class RecordingTab(QtWidgets.QWidget):
         # ========================================================
         if not self.trigger_mode:
 
-            # take last N samples based on window
+            self.set_markers_visible(True)
+
             ch1_view = ch1[-self.NORMAL_VISIBLE_SAMPLES:]
             ch2_view = ch2[-self.NORMAL_VISIBLE_SAMPLES:]
 
-            x = np.arange(len(ch1_view)) * 1000 / self.sample_rate  # ms axis
+            x = np.arange(len(ch1_view)) * 1000 / self.sample_rate
 
             self.curve1.setData(x, ch1_view)
             self.curve2.setData(x, ch2_view)
 
             self.plot1.setXRange(0, NORMAL_WINDOW_MS)
             self.plot2.setXRange(0, NORMAL_WINDOW_MS)
-            
+
             window_end = self.pipeline.get_sample_index()
             self.update_marker_positions(window_end)
 
             return
-        
+
         # ========================================================
-        # TRIGGER MODE (spike detection on CH1)
+        # TRIGGER MODE (INDEPENDENT CHANNELS)
         # ========================================================
-        spike_indices = np.where(
+
+        self.set_markers_visible(False)
+
+        # CH1 trigger → Plot 1
+        spike_ch1 = np.where(
             (ch1 > self.upper_threshold) |
             (ch1 < self.lower_threshold)
         )[0]
 
-        if len(spike_indices) == 0:
-            return
+        if len(spike_ch1) > 0:
+            idx = spike_ch1[0]
 
-        trigger_idx = spike_indices[0]
+            if idx != self.last_trigger_index_ch1:
+                self.last_trigger_index_ch1 = idx
+                self._draw_trigger_segment(idx, ch1, self.curve1, self.plot1)
 
-        # avoid duplicate trigger spam
-        if trigger_idx == self.last_trigger_index:
-            return
+        # CH2 trigger → Plot 2
+        spike_ch2 = np.where(
+            (ch2 > self.upper_threshold) |
+            (ch2 < self.lower_threshold)
+        )[0]
 
-        self.last_trigger_index = trigger_idx
+        if len(spike_ch2) > 0:
+            idx = spike_ch2[0]
 
-        pre = self.TRIGGER_VISIBLE_SAMPLES // 2
-        post = self.TRIGGER_VISIBLE_SAMPLES - pre
+            if idx != self.last_trigger_index_ch2:
+                self.last_trigger_index_ch2 = idx
+                self._draw_trigger_segment(idx, ch2, self.curve2, self.plot2)
 
-        start_i = max(0, trigger_idx - pre)
-        end_i = min(len(ch1), trigger_idx + post)
-
-        seg1 = ch1[start_i:end_i]
-        seg2 = ch2[start_i:end_i]
-
-        # pad if needed
-        if len(seg1) < self.TRIGGER_VISIBLE_SAMPLES:
-            pad_len = self.TRIGGER_VISIBLE_SAMPLES - len(seg1)
-
-            seg1 = np.pad(seg1, (0, pad_len), mode='edge')
-            seg2 = np.pad(seg2, (0, pad_len), mode='edge')
-
-        t = np.arange(len(seg1)) * 1000 / self.sample_rate
-
-        self.curve1.setData(t, seg1)
-        self.curve2.setData(t, seg2)
-
-        self.plot1.setXRange(0, TRIGGER_WINDOW_MS)
-        self.plot2.setXRange(0, TRIGGER_WINDOW_MS)
-        
-        
+    # ============================================================
+    # KEY INPUT
+    # ============================================================
     def keyPressEvent(self, event):
 
         if not self.running:
@@ -245,43 +289,5 @@ class RecordingTab(QtWidgets.QWidget):
             marker_id = key - QtCore.Qt.Key_0
             idx = self.pipeline.get_sample_index()
 
-            self.controller.engine.add_marker(marker_id)
+            self.engine.add_marker(marker_id)
             self.add_marker(marker_id, idx)
-            
-    def add_marker(self, marker_id, idx):
-
-        colors = {
-            1: 'r', 2: 'g', 3: 'b', 4: 'y', 5: 'm',
-            6: 'c', 7: 'w', 8: (255,165,0), 9: (128,0,128)
-        }
-
-        line = pg.InfiniteLine(
-            angle=90,
-            pen=pg.mkPen(colors.get(marker_id, 'r'), width=2)
-        )
-
-        self.plot1.addItem(line)
-
-        self.markers.append((marker_id, idx, line))
-        
-    def update_marker_positions(self, window_end):
-
-        window_size = self.NORMAL_VISIBLE_SAMPLES
-        window_start = window_end - window_size
-
-        for marker_id, idx, line in self.markers:
-
-            # skip if outside window
-            if idx < window_start or idx > window_end:
-                line.setVisible(False)
-                continue
-
-            line.setVisible(True)
-
-            # relative position in samples (NOT time conversion here)
-            x_samples = idx - window_start
-
-            # convert to time only for display axis
-            x_ms = (x_samples / self.sample_rate) * 1000
-
-            line.setPos(x_ms)

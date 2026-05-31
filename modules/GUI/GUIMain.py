@@ -21,15 +21,13 @@ import os
 import numpy as np
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
-from PyQt5.QtWidgets import (QMainWindow, QApplication, QSpinBox, QFileDialog,
+from PyQt5.QtWidgets import (QMainWindow, QSpinBox, QFileDialog,
                              QCheckBox, QLabel, QDoubleSpinBox, QMessageBox)
 from modules.GUI.Ui_SpikeAnalysis import Ui_MainWindow
 from modules.GUI import GUIFunctions
-from core.pipeline import Pipeline
 from core.engine import RecordingEngine
-from core.controller import RecordingController
 from modules.GUI.GUIRecording import RecordingTab
-from settings.settings import SAMPLE_RATE, CHANNELS
+
 
 class Main(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -85,8 +83,7 @@ class Main(QMainWindow, Ui_MainWindow):
         self.SetFulldata()
         
         self.engine = RecordingEngine()
-        self.controller = RecordingController(self.engine)
-        self.recording_tab = RecordingTab(self.controller)
+        self.recording_tab = RecordingTab(self.engine)
         self.tabWidget.insertTab(0, self.recording_tab, "Recording")
         
         #Plot canvasses

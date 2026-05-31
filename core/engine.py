@@ -12,7 +12,12 @@ import time
 
 class RecordingEngine:
 
-    def __init__(self, sample_rate=SAMPLE_RATE, REAL_DATA=REAL_DATA, channels=CHANNELS):
+    def __init__(
+        self,
+        sample_rate=SAMPLE_RATE,
+        REAL_DATA=REAL_DATA,
+        channels=CHANNELS
+    ):
 
         self.sample_rate = sample_rate
         self.channels = channels
@@ -21,13 +26,23 @@ class RecordingEngine:
         # -------------------------
         # BUFFERS
         # -------------------------
-        self.raw_buffer = CircularBuffer(sample_rate * 5, self.channels)
-        self.proc_buffer = ProcessedBuffer(sample_rate * 2, self.channels)
+        self.raw_buffer = CircularBuffer(
+            sample_rate * 5,
+            channels
+        )
+
+        self.proc_buffer = ProcessedBuffer(
+            sample_rate * 2,
+            channels
+        )
 
         # -------------------------
         # PIPELINE
         # -------------------------
-        self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
+        self.pipeline = Pipeline(
+            self.raw_buffer,
+            self.proc_buffer
+        )
 
         # -------------------------
         # DSP STATE
@@ -38,41 +53,26 @@ class RecordingEngine:
         # -------------------------
         # COMPONENTS
         # -------------------------
+        self.source = None
         self.dsp = None
         self.writer = None
-        self.source = None
-        
+
         # -------------------------
-        # SESSION 
-        # -------------------------       
+        # SESSION
+        # -------------------------
         self.session_id = None
         self.marker_logger = None
-        self.global_sample_index = 0
-        
-        self._init_source()
+
         self._running = False
-        
-    # ============================================================
-    # SESSION INIT
-    # ============================================================
-    def start_session(self):
 
-        self.session_id = time.strftime("%Y%m%d_%H%M%S")
-
-        self.marker_logger = MarkerLogger(
-            output_prefix="session",
-            session_id=self.session_id
-        )
-
-        return self.session_id
+        self._init_source()
 
     # ============================================================
-    # SOURCE FACTORY 
+    # SOURCE
     # ============================================================
     def _init_source(self):
 
         if self.REAL_DATA:
-
 
             self.source = BLESource(
                 pipeline=self.pipeline,
@@ -83,21 +83,45 @@ class RecordingEngine:
             )
 
         else:
-            self.source = SyntheticBLESource(self.pipeline)
+
+            self.source = SyntheticBLESource(
+                self.pipeline
+            )
 
     # ============================================================
-    # START ENGINE 
+    # SESSION
+    # ============================================================
+    def start_session(self):
+
+        self.session_id = time.strftime("%Y%m%d_%H%M%S")
+
+        self.marker_logger = MarkerLogger(
+            output_prefix="session",
+            session_id=self.session_id
+        )
+
+    # ============================================================
+    # START
     # ============================================================
     def start(self):
 
         if self._running:
             return
 
-        self._running = True
-        
-        if self.session_id is None:
-            self.start_session()
+        # -------------------------
+        # Source thread lives forever
+        # -------------------------
+        if not self.source.is_alive():
+            self.source.start()
 
+        # -------------------------
+        # New session every recording
+        # -------------------------
+        self.start_session()
+
+        # -------------------------
+        # New workers every recording
+        # -------------------------
         self.dsp = DSPThread(
             ring_buffer=self.raw_buffer,
             pipeline=self.pipeline,
@@ -113,40 +137,99 @@ class RecordingEngine:
             output_prefix="session"
         )
 
+        # -------------------------
+        # Start source streaming
+        # -------------------------
+        self.source.ack_start.clear()
+
+        self.source.cmd_start()
+
+        if not self.source.ack_start.wait(timeout=3.0):
+            raise TimeoutError(
+                "START ACK not received"
+            )
+
+        # -------------------------
+        # Start workers
+        # -------------------------
         self.dsp.start()
         self.writer.start()
 
+        self._running = True
+
+    # ============================================================
+    # STOP
+    # ============================================================
     def stop(self):
 
         if not self._running:
             return
 
-        self._running = False
+        # -------------------------
+        # Stop source streaming
+        # -------------------------
+        self.source.ack_stop.clear()
 
+        self.source.cmd_stop()
+
+        if not self.source.ack_stop.wait(timeout=3.0):
+            print("WARNING: STOP ACK timeout")
+
+        # -------------------------
+        # Stop workers
+        # -------------------------
         if self.dsp:
             self.dsp.stop()
 
         if self.writer:
             self.writer.stop()
 
-        if self.dsp:
+        # -------------------------
+        # Join workers
+        # -------------------------
+        if self.dsp and self.dsp.is_alive():
             self.dsp.join(timeout=2)
 
         if self.writer and self.writer.is_alive():
             self.writer.join(timeout=2)
-            
+
+        # -------------------------
+        # Finalize session
+        # -------------------------
         if self.marker_logger:
             self.marker_logger.stop()
 
+        # -------------------------
+        # IMPORTANT:
+        # prepare for next session
+        # -------------------------
+        self.dsp = None
+        self.writer = None
+
+        self.marker_logger = None
+        self.session_id = None
+
+        self._running = False
+
+    # ============================================================
+    # ACCESSORS
+    # ============================================================
     def get_pipeline(self):
         return self.pipeline
-    
+
+    # ============================================================
+    # MARKERS
+    # ============================================================
     def add_marker(self, marker_id):
 
         if self.marker_logger is None:
             return
 
         sample_idx = self.pipeline.get_sample_index()
+
         t = sample_idx / self.sample_rate
 
-        self.marker_logger.add(marker_id, t)
+        self.marker_logger.add(
+            marker_id,
+            t
+        )
