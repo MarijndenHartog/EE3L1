@@ -8,6 +8,7 @@ from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE, BLE_ADDRESS, CMD
 from workers.datasource.ble_source import BLESource
 from core.marker_logger import MarkerLogger
 import time
+from simulations.stress_config import BLEStressConfig          ########################Remove later
 
 
 class RecordingEngine:
@@ -16,12 +17,14 @@ class RecordingEngine:
         self,
         sample_rate=SAMPLE_RATE,
         REAL_DATA=REAL_DATA,
-        channels=CHANNELS
+        channels=CHANNELS,
+        config=BLEStressConfig()                      ########################Remove later
     ):
 
         self.sample_rate = sample_rate
         self.channels = channels
         self.REAL_DATA = REAL_DATA
+        self.config = config                          ########################Remove later
 
         # -------------------------
         # BUFFERS
@@ -82,10 +85,10 @@ class RecordingEngine:
                 channels=self.channels
             )
 
-        else:
+        else:                                       ########################Remove later
 
             self.source = SyntheticBLESource(
-                self.pipeline
+                self.pipeline, config=self.config       ########################Remove later
             )
 
     # ============================================================
