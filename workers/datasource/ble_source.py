@@ -51,6 +51,12 @@ class BLESource(threading.Thread, DataSource):
         self._streaming = True
         self.state = SourceState.STREAMING
 
+        if self.client and self.client.is_connected:
+            asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.NUS_RX_UUID, b'\x01'),
+                asyncio.get_event_loop()
+            )
+
         self.ack_start.set()
 
 
@@ -58,6 +64,12 @@ class BLESource(threading.Thread, DataSource):
 
         self._streaming = False
         self.state = SourceState.READY
+
+        if self.client and self.client.is_connected:
+            asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.NUS_RX_UUID, b'\x02'),
+                asyncio.get_event_loop()
+            )
 
         self.ack_stop.set()
         
