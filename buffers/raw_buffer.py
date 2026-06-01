@@ -42,15 +42,14 @@ class CircularBuffer:
         with self.lock:
             wp = self.write_idx
             end = wp + n
+            self.write_idx = end % self.capacity
 
             if end <= self.capacity:
                 self.buffer[wp:end] = samples
             else:
                 first = self.capacity - wp
                 self.buffer[wp:] = samples[:first]
-                self.buffer[:end % self.capacity] = samples[first:]
-
-            self.write_idx = end % self.capacity
+                self.buffer[:self.write_idx] = samples[first:]
 
             # IMPORTANT: detect overwrite risk for slow consumers
             for name in self.read_ptrs:

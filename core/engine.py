@@ -4,7 +4,7 @@ from workers.writer import WAVWriter
 from buffers.raw_buffer import CircularBuffer
 from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
-from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE, BLE_ADDRESS, CMD_UUID, DATA_UUID
+from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE
 from workers.datasource.ble_source import BLESource
 from core.marker_logger import MarkerLogger
 import time
@@ -35,7 +35,7 @@ class RecordingEngine:
         )
 
         self.proc_buffer = ProcessedBuffer(
-            sample_rate * 2,
+            sample_rate * 15,
             channels
         )
 
@@ -79,9 +79,6 @@ class RecordingEngine:
 
             self.source = BLESource(
                 pipeline=self.pipeline,
-                address=BLE_ADDRESS,
-                cmd_uuid=CMD_UUID,
-                data_uuid=DATA_UUID,
                 channels=self.channels
             )
 
