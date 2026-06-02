@@ -20,73 +20,37 @@ class RecordingEngine:
         channels=CHANNELS,
         config=BLEStressConfig()                      ########################Remove later
     ):
-
+            
         self.sample_rate = sample_rate
         self.channels = channels
         self.REAL_DATA = REAL_DATA
-        self.config = config                          ########################Remove later
+        self.config = config
 
-        # -------------------------
-        # BUFFERS
-        # -------------------------
-        self.raw_buffer = CircularBuffer(
-            sample_rate * 5,
-            channels
-        )
+        self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
+        self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)
 
-        self.proc_buffer = ProcessedBuffer(
-            sample_rate * 15,
-            channels
-        )
+        self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
 
-        # -------------------------
-        # PIPELINE
-        # -------------------------
-        self.pipeline = Pipeline(
-            self.raw_buffer,
-            self.proc_buffer
-        )
-
-        # -------------------------
-        # DSP STATE
-        # -------------------------
         self.dsp_state = DSPState()
         self.dsp_state.update(-500, 500)
 
-        # -------------------------
-        # COMPONENTS
-        # -------------------------
         self.source = None
         self.dsp = None
         self.writer = None
-
-        # -------------------------
-        # SESSION
-        # -------------------------
-        self.session_id = None
-        self.marker_logger = None
 
         self._running = False
 
         self._init_source()
 
-    # ============================================================
-    # SOURCE
-    # ============================================================
     def _init_source(self):
 
         if self.REAL_DATA:
+            self.source = BLESource(self.pipeline, channels=self.channels)
+            self.source.start()   # 🔥 ONLY ONCE EVER
+        else:
+            self.source = SyntheticBLESource(self.pipeline, config=self.config)
+            self.source.start()
 
-            self.source = BLESource(
-                pipeline=self.pipeline,
-                channels=self.channels
-            )
-
-        else:                                       ########################Remove later
-
-            self.source = SyntheticBLESource(
-                self.pipeline, config=self.config       ########################Remove later
-            )
 
     # ============================================================
     # SESSION
@@ -99,29 +63,16 @@ class RecordingEngine:
             output_prefix="session",
             session_id=self.session_id
         )
-
-    # ============================================================
-    # START
-    # ============================================================
+    # =========================================================
+    # START SESSION
+    # =========================================================
     def start(self):
 
         if self._running:
             return
 
-        # -------------------------
-        # Source thread lives forever
-        # -------------------------
-        if not self.source.is_alive():
-            self.source.start()
-
-        # -------------------------
-        # New session every recording
-        # -------------------------
         self.start_session()
 
-        # -------------------------
-        # New workers every recording
-        # -------------------------
         self.dsp = DSPThread(
             ring_buffer=self.raw_buffer,
             pipeline=self.pipeline,
@@ -137,80 +88,31 @@ class RecordingEngine:
             output_prefix="session"
         )
 
-        # -------------------------
-        # Start source streaming
-        # -------------------------
         self.source.ack_start.clear()
-
         self.source.cmd_start()
 
-        if not self.source.ack_start.wait(timeout=3.0):
-            raise TimeoutError(
-                "START ACK not received"
-            )
+        self.source.ack_start.wait(timeout=3.0)
 
-        # -------------------------
-        # Start workers
-        # -------------------------
         self.dsp.start()
         self.writer.start()
 
         self._running = True
 
-    # ============================================================
-    # STOP
-    # ============================================================
+    # =========================================================
+    # STOP SESSION
+    # =========================================================
     def stop(self):
 
         if not self._running:
             return
 
-        # -------------------------
-        # Stop source streaming
-        # -------------------------
-        self.source.ack_stop.clear()
-
         self.source.cmd_stop()
 
-        if not self.source.ack_stop.wait(timeout=3.0):
-            print("WARNING: STOP ACK timeout")
-
-        # -------------------------
-        # Stop workers
-        # -------------------------
-        if self.dsp:
-            self.dsp.stop()
-
-        if self.writer:
-            self.writer.stop()
-
-        # -------------------------
-        # Join workers
-        # -------------------------
-        if self.dsp and self.dsp.is_alive():
-            self.dsp.join(timeout=2)
-
-        if self.writer and self.writer.is_alive():
-            self.writer.join(timeout=2)
-
-        # -------------------------
-        # Finalize session
-        # -------------------------
-        if self.marker_logger:
-            self.marker_logger.stop()
-
-        # -------------------------
-        # IMPORTANT:
-        # prepare for next session
-        # -------------------------
-        self.dsp = None
-        self.writer = None
-
-        self.marker_logger = None
-        self.session_id = None
+        self.dsp.stop()
+        self.writer.stop()
 
         self._running = False
-
+        
     # ============================================================
     # ACCESSORS
     # ============================================================
