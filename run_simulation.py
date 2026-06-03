@@ -10,7 +10,7 @@ def run():
     app = QtWidgets.QApplication(sys.argv)
 
     # 1. engine (real or simulated)
-    configuration = BLEStressConfig(enable_packet_loss=False, enable_congestion=False, enable_burst=False, enable_stall=False)  # clean config for testing
+    configuration = BLEStressConfig()  # clean config for testing
     
     engine = RecordingEngine(REAL_DATA=False, config=configuration)   
     

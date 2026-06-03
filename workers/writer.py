@@ -4,6 +4,7 @@ import time
 import wave
 
 
+
 class WAVWriter(threading.Thread):
 
     def __init__(self, ring_buffer, sample_rate, session_id=None, **kwargs):
@@ -19,10 +20,13 @@ class WAVWriter(threading.Thread):
 
         self._stop_event = threading.Event()
 
-        self.ring.register_consumer(self.consumer_name, start_latest=True)
-
         self._file = None
         self._filename = None
+
+        self.ring.register_consumer(
+            self.consumer_name,
+            start_latest=True
+        )
 
     # -------------------------
     # START
@@ -53,24 +57,31 @@ class WAVWriter(threading.Thread):
     # -------------------------
     def run(self):
 
-        # open file ONCE per session
-        self._filename = f"{self.output_prefix}_{self.session_id}.wav"
+        try:
+            self._filename = f"{self.output_prefix}_{self.session_id}.wav"
 
-        self._file = wave.open(self._filename, "wb")
-        self._file.setnchannels(2)      # stereo
-        self._file.setsampwidth(2)      # int16
-        self._file.setframerate(self.sample_rate)
+            self._file = wave.open(self._filename, "wb")
+            self._file.setnchannels(2)
+            self._file.setsampwidth(2)
+            self._file.setframerate(self.sample_rate)
 
-        print(f"[WAV WRITER] recording to {self._filename}")
+            print(f"[WAV WRITER] recording to {self._filename}")
 
-        while not self._stop_event.is_set():
+            while not self._stop_event.is_set():
 
-            chunk = self.ring.read(self.consumer_name, self.max_chunk)
+                chunk = self.ring.read(self.consumer_name, self.max_chunk)
 
-            if len(chunk) > 0:
-                audio = np.asarray(chunk)
+                if len(chunk) > 0:
+                    audio = np.asarray(chunk)
 
-                if audio.ndim == 2:
-                    self._file.writeframes(audio.astype(np.int16).tobytes())
+                    if audio.ndim == 2:
+                        self._file.writeframes(
+                            audio.astype(np.int16).tobytes()
+                        )
 
-            time.sleep(0.005)
+                time.sleep(0.005)
+
+        finally:
+            if self._file:
+                self._file.close()
+                self._file = None

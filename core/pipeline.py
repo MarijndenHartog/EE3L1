@@ -20,3 +20,8 @@ class Pipeline:
     
     def get_sample_index(self):
         return self.sample_index
+    
+    def reset(self):
+        self.raw.reset()
+        self.proc.reset()
+        self.sample_index = 0

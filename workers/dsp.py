@@ -23,18 +23,12 @@ class DSPState:
 
 
 class DSPThread(threading.Thread):
-    """
-    Dummy DSP:
-    - leest uit CircularBuffer
-    - doet GEEN filtering
-    - schrijft direct door naar ProcessedBuffer
-    """
 
     def __init__(
         self,
         ring_buffer,
         pipeline: Pipeline,
-        dsp_state: DSPState,
+        dsp_state,
         consumer_name="dsp",
         block_size=256
     ):
@@ -49,33 +43,27 @@ class DSPThread(threading.Thread):
 
         self._running = True
 
-        # register in circular buffer
-        self.ring.register_consumer(consumer_name, start_latest=True)
+        self.ring.register_consumer(
+            consumer_name,
+            start_latest=True
+        )
 
-    # -------------------------
-    # THREAD LOOP
-    # -------------------------
     def run(self):
         while self._running:
+            try:
+                chunk = self.ring.read(self.consumer_name, self.block_size)
 
-            # 1. read raw audio
-            chunk = self.ring.read(self.consumer_name, self.block_size)
+                if len(chunk) == 0:
+                    time.sleep(0.001)
+                    continue
 
-            if len(chunk) == 0:
+                self.pipeline.push_processed(chunk)
+
                 time.sleep(0.001)
-                continue
 
-            # 2. DUMMY DSP (no processing)
-            processed = chunk
+            except Exception as e:
+                print(f"[DSPThread error] {e}")
+                break
 
-            # 3. forward to GUI buffer
-            self.pipeline.push_processed(processed)
-
-            # small sleep to avoid 100% CPU spin
-            time.sleep(0.001)
-
-    # -------------------------
-    # STOP
-    # -------------------------
     def stop(self):
         self._running = False

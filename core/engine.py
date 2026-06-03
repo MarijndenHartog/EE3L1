@@ -1,10 +1,12 @@
+import threading
+
 from workers.datasource.synthetic_source import SyntheticBLESource
 from workers.dsp import DSPThread, DSPState
 from workers.writer import WAVWriter
 from buffers.raw_buffer import CircularBuffer
 from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
-from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE
+from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE, STIMULATION_TIME_MAX
 from workers.datasource.ble_source import BLESource
 from core.marker_logger import MarkerLogger
 import time
@@ -16,19 +18,17 @@ class RecordingEngine:
     def __init__(
         self,
         sample_rate=SAMPLE_RATE,
-        REAL_DATA=REAL_DATA,
+        REAL_DATA=REAL_DATA,                           #########################Remove later, replace with real source
         channels=CHANNELS,
         config=BLEStressConfig()                      ########################Remove later
     ):
             
         self.sample_rate = sample_rate
-        self.channels = channels
-        self.REAL_DATA = REAL_DATA
-        self.config = config
+        self.REAL_DATA = REAL_DATA                  #########################Remove later
+        self.config = config                        ########################Remove later
 
         self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
-        self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)
-
+        self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)  
         self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
 
         self.dsp_state = DSPState()
@@ -39,30 +39,19 @@ class RecordingEngine:
         self.writer = None
 
         self._running = False
+        self.last_stim_time = 0.0
 
-        self._init_source()
 
-    def _init_source(self):
+    def _init_source(self):   #########################Remove later
 
         if self.REAL_DATA:
-            self.source = BLESource(self.pipeline, channels=self.channels)
-            self.source.start()   # 🔥 ONLY ONCE EVER
+            self.source = BLESource(self.pipeline)
         else:
-            self.source = SyntheticBLESource(self.pipeline, config=self.config)
-            self.source.start()
+            self.source = SyntheticBLESource(self.pipeline, config=self.config)  
 
 
-    # ============================================================
-    # SESSION
-    # ============================================================
-    def start_session(self):
 
-        self.session_id = time.strftime("%Y%m%d_%H%M%S")
 
-        self.marker_logger = MarkerLogger(
-            output_prefix="session",
-            session_id=self.session_id
-        )
     # =========================================================
     # START SESSION
     # =========================================================
@@ -71,8 +60,14 @@ class RecordingEngine:
         if self._running:
             return
 
-        self.start_session()
+        self.session_id = time.strftime("%Y%m%d_%H%M%S")
 
+        self.marker_logger = MarkerLogger(
+            output_prefix="session",
+            session_id=self.session_id
+        )
+
+        # NEW DSP per session
         self.dsp = DSPThread(
             ring_buffer=self.raw_buffer,
             pipeline=self.pipeline,
@@ -87,6 +82,8 @@ class RecordingEngine:
             flush_interval_seconds=5.0,
             output_prefix="session"
         )
+        
+        self._init_source()   ##########################Remove later recplace with real source 
 
         self.source.ack_start.clear()
         self.source.cmd_start()
@@ -94,10 +91,12 @@ class RecordingEngine:
         self.source.ack_start.wait(timeout=3.0)
 
         self.dsp.start()
+        self.source.start()
         self.writer.start()
+        self.marker_logger.start()
 
         self._running = True
-
+    
     # =========================================================
     # STOP SESSION
     # =========================================================
@@ -106,12 +105,35 @@ class RecordingEngine:
         if not self._running:
             return
 
-        self.source.cmd_stop()
+        # STOP WRITER
+        if self.writer:
+            self.writer.stop()
+            self.writer.join(timeout=2.0)
+            self.writer = None
 
-        self.dsp.stop()
-        self.writer.stop()
+        # STOP MARKERS
+        if self.marker_logger:
+            self.marker_logger.stop()
+            self.marker_logger = None
+            
+        # STOP SOURCE
+        if self.source:
+            self.source.cmd_stop()
+            self.source.stop()
+            self.source.join(timeout=2.0)
+            
+        # STOP DSP
+        if self.dsp:
+            self.dsp.stop()
+            self.dsp.join(timeout=2.0)
+            self.dsp = None
+            
+        self.pipeline.reset()
+
 
         self._running = False
+        
+    
         
     # ============================================================
     # ACCESSORS
@@ -135,3 +157,20 @@ class RecordingEngine:
             marker_id,
             t
         )
+        
+    # ============================================================
+    # Stimulation
+    # ============================================================
+    def send_stimulation_burst(self, duration_ms, frequency_hz):
+
+        if not self._running or self.source is None:
+            return
+        
+        #debounce
+        if time.perf_counter() - self.last_stim_time < 2*(STIMULATION_TIME_MAX / 1000):
+            print("[WARNING] Stimulation command ignored due to debounce. Please wait before sending another stimulation.")
+            return
+        
+        self.source.cmd_burst(duration_ms, frequency_hz)
+        self.last_stim_time = time.perf_counter()
+        

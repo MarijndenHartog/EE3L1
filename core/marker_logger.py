@@ -4,6 +4,18 @@ import queue
 import os
 
 
+import time
+import threading
+import queue
+import os
+
+
+import time
+import threading
+import queue
+import os
+
+
 class MarkerLogger:
 
     def __init__(self, output_prefix="session", session_id=None,
@@ -14,21 +26,17 @@ class MarkerLogger:
 
         self.filepath = f"{self.output_prefix}_{self.session_id}_markers.txt"
 
-        # queue for thread-safe logging
         self.q = queue.Queue()
 
-        # rate limiting
         self.min_interval = min_interval
         self._last_time = 0.0
 
-        # flush control
         self.flush_interval = flush_interval
-        self._stop = threading.Event()
+
+        self._stop_event = threading.Event()
+        self._thread = None
 
         self._init_file()
-
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
 
     # ------------------------------------------------------------
     def _init_file(self):
@@ -42,7 +50,6 @@ class MarkerLogger:
 
         now = time.perf_counter()
 
-        # rate limit (prevents spam)
         if now - self._last_time < self.min_interval:
             return
 
@@ -57,36 +64,54 @@ class MarkerLogger:
 
         buffer = []
 
-        while not self._stop.is_set():
+        try:
+            while not self._stop_event.is_set():
 
-            try:
-                item = self.q.get(timeout=self.flush_interval)
-                buffer.append(item)
-            except queue.Empty:
-                pass
+                try:
+                    item = self.q.get(timeout=self.flush_interval)
+                    buffer.append(item)
+                except queue.Empty:
+                    pass
 
-            # flush batch
+                if buffer:
+                    with open(self.filepath, "a") as f:
+                        for m, t in buffer:
+                            f.write(f"{m},\t{t:.4f}\n")
+
+                        f.flush()
+                        os.fsync(f.fileno())
+
+                    buffer.clear()
+
+        finally:
+            # final flush on exit
             if buffer:
-
                 with open(self.filepath, "a") as f:
                     for m, t in buffer:
                         f.write(f"{m},\t{t:.4f}\n")
-
                     f.flush()
                     os.fsync(f.fileno())
 
-                buffer.clear()
-
-        # final flush on exit
-        if buffer:
-            with open(self.filepath, "a") as f:
-                for m, t in buffer:
-                    f.write(f"{m},\t{t:.4f}\n")
-
-                f.flush()
-                os.fsync(f.fileno())
-
     # ------------------------------------------------------------
     def stop(self):
-        self._stop.set()
-        self.thread.join(timeout=2.0)
+        self._stop_event.set()
+
+        if self._thread:
+            self._thread.join()  
+            self._thread = None
+            
+            
+    def start(self):
+
+        if self._thread and self._thread.is_alive():
+            return
+
+        self._stop_event.clear()
+
+        self._thread = threading.Thread(
+            target=self._run,
+            daemon=True,
+            name=f"MarkerLogger-{self.session_id}"
+        )
+
+        self._thread.start()

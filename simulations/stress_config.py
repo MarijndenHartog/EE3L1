@@ -24,7 +24,7 @@ class BLEStressConfig:
         # STALL (BLE freeze events)
         # =========================
         enable_stall=True,
-        stall_prob=0.01,
+        stall_prob=0.1,
         stall_ms=(50, 200),
 
         # =========================

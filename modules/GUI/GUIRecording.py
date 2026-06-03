@@ -8,7 +8,11 @@ from settings.settings import (
     TRIGGER_WINDOW_MS,
     NORMAL_WINDOW_MS,
     UPPER_THRESHOLD,
-    LOWER_THRESHOLD
+    LOWER_THRESHOLD,
+    STIMULATION_TIME_MS,
+    STIMULATION_FREQUENCY_HZ,
+    STIMULATION_TIME_MAX,
+    STIMULATION_FREQUENCY_MAX
 )
 
 
@@ -17,20 +21,28 @@ class RecordingTab(QtWidgets.QWidget):
     def __init__(self, engine, parent=None):
         super().__init__(parent)
 
-        self.engine = engine
+        # Access engine and pipeline
+        self.engine = engine  
         self.pipeline = self.engine.get_pipeline()
 
-        self.sample_rate = SAMPLE_RATE
-
+        # State variables
         self.running = False
         self.trigger_mode = False
 
+        # Thresholds and trigger state
         self.upper_threshold = UPPER_THRESHOLD
         self.lower_threshold = LOWER_THRESHOLD
-
         self.last_trigger_index_ch1 = -1
         self.last_trigger_index_ch2 = -1
+        
+        # Stimulation parameters
+        self.stim_time_max = STIMULATION_TIME_MAX
+        self.stim_freq_max = STIMULATION_FREQUENCY_MAX
+        self.stim_time = STIMULATION_TIME_MS
+        self.stim_freq = STIMULATION_FREQUENCY_HZ
 
+        # Set visible window sizes in samples
+        self.sample_rate = SAMPLE_RATE
         self.NORMAL_VISIBLE_SAMPLES = int(
             self.sample_rate * NORMAL_WINDOW_MS / 1000
         )
@@ -39,11 +51,14 @@ class RecordingTab(QtWidgets.QWidget):
             self.sample_rate * TRIGGER_WINDOW_MS / 1000
         )
 
+        # Markers: list of tuples (marker_id, sample_index, line_item)
         self.markers = []
 
+        # Initialize UI
         self.init_ui()
         self.update_thresholds()
 
+        # Start update timer
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(UPDATE_TIME)
@@ -59,14 +74,18 @@ class RecordingTab(QtWidgets.QWidget):
 
         controls = QtWidgets.QVBoxLayout()
 
+        ## Control buttons
+        # Start/Stop button
         self.btn = QtWidgets.QPushButton("Start")
         self.btn.setCheckable(True)
         self.btn.clicked.connect(self.toggle)
 
+        # Trigger mode toggle button
         self.trigger_btn = QtWidgets.QPushButton("Trigger Mode: OFF")
         self.trigger_btn.setCheckable(True)
         self.trigger_btn.clicked.connect(self.toggle_trigger_mode)
 
+        # Trigger threshold controls
         self.upper_box = QtWidgets.QSpinBox()
         self.upper_box.setRange(-100000, 100000)
         self.upper_box.setValue(self.upper_threshold)
@@ -76,17 +95,36 @@ class RecordingTab(QtWidgets.QWidget):
         self.lower_box.setRange(-100000, 100000)
         self.lower_box.setValue(self.lower_threshold)
         self.lower_box.valueChanged.connect(self.update_thresholds)
+        
+        # Stimulation time and frequency controls 
+        self.stim_time_box = QtWidgets.QSpinBox()
+        self.stim_time_box.setRange(0, self.stim_time_max)
+        self.stim_time_box.setValue(self.stim_time)
+        self.stim_time_box.valueChanged.connect(self.update_stimulation)
+        self.stim_button = QtWidgets.QPushButton("Send Stimulation")
+        self.stim_button.clicked.connect(lambda: self.engine.send_stimulation_burst(self.stim_time, self.stim_freq))
+        
+        self.stim_freq_box = QtWidgets.QSpinBox()
+        self.stim_freq_box.setRange(0, self.stim_freq_max)
+        self.stim_freq_box.setValue(self.stim_freq)
+        self.stim_freq_box.valueChanged.connect(self.update_stimulation)
 
+        # Add controls to layout
         controls.addWidget(self.btn)
         controls.addWidget(self.trigger_btn)
         controls.addWidget(QtWidgets.QLabel("Upper threshold"))
         controls.addWidget(self.upper_box)
         controls.addWidget(QtWidgets.QLabel("Lower threshold"))
         controls.addWidget(self.lower_box)
+        controls.addWidget(QtWidgets.QLabel("Stimulation Time"))
+        controls.addWidget(self.stim_time_box)
+        controls.addWidget(QtWidgets.QLabel("Stimulation Frequency"))
+        controls.addWidget(self.stim_freq_box)
+        controls.addWidget(self.stim_button)
         controls.addStretch()
 
+        # Add plots
         pg_layout = QtWidgets.QVBoxLayout()
-
         self.plot1 = pg.PlotWidget(title="Channel 1")
         self.plot2 = pg.PlotWidget(title="Channel 2")
 
@@ -143,6 +181,11 @@ class RecordingTab(QtWidgets.QWidget):
 
         self.upper_line2.setValue(self.upper_threshold)
         self.lower_line2.setValue(self.lower_threshold)
+        
+    def update_stimulation(self):
+        self.stim_time = self.stim_time_box.value()
+        self.stim_freq = self.stim_freq_box.value()
+        return
 
     # ============================================================
     # MARKERS
@@ -188,22 +231,25 @@ class RecordingTab(QtWidgets.QWidget):
     # ============================================================
     def _draw_trigger_segment(self, trigger_idx, ch, curve, plot):
 
-        pre = self.TRIGGER_VISIBLE_SAMPLES // 2
-        post = self.TRIGGER_VISIBLE_SAMPLES - pre
+        half = self.TRIGGER_VISIBLE_SAMPLES // 2
 
-        start_i = max(0, trigger_idx - pre)
-        end_i = min(len(ch), trigger_idx + post)
+        start_i = trigger_idx - half
+        end_i = trigger_idx + half
 
-        seg = ch[start_i:end_i]
+        seg = np.zeros(self.TRIGGER_VISIBLE_SAMPLES, dtype=ch.dtype)
 
-        if len(seg) < self.TRIGGER_VISIBLE_SAMPLES:
-            pad_len = self.TRIGGER_VISIBLE_SAMPLES - len(seg)
-            seg = np.pad(seg, (0, pad_len), mode='edge')
+        seg_start = max(0, -start_i)
+        data_start = max(0, start_i)
+        data_end = min(len(ch), end_i)
 
-        t = np.arange(len(seg)) * 1000 / self.sample_rate
+        seg[seg_start:seg_start + (data_end - data_start)] = ch[data_start:data_end]
+
+        t = np.arange(self.TRIGGER_VISIBLE_SAMPLES) * 1000 / self.sample_rate
+
 
         curve.setData(t, seg)
-        plot.setXRange(0, TRIGGER_WINDOW_MS)
+
+        plot.setXRange(0, self.TRIGGER_VISIBLE_SAMPLES * 1000 / self.sample_rate)
 
     # ============================================================
     # UPDATE LOOP
