@@ -272,7 +272,7 @@ class BLESource(threading.Thread, DataSource):
         self.loop.run_until_complete(self._ble_loop())
 
     # =========================================================
-    # THREAD START
+    # THREAD START (ONLY ONCE EVER)
     # =========================================================
     def start(self):
         if self.is_alive():
@@ -283,7 +283,7 @@ class BLESource(threading.Thread, DataSource):
     # STOP
     # =========================================================
     def stop(self):
-        print("BLESource STOP")
+        print("BLESource STOP (soft)")
 
         self.cmd_stop()
 

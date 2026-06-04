@@ -96,6 +96,8 @@ class RecordingEngine:
         self.marker_logger.start()
 
         self._running = True
+        
+        print(threading.enumerate())
     
     # =========================================================
     # STOP SESSION
