@@ -108,7 +108,18 @@ class RecordingTab(QtWidgets.QWidget):
         self.stim_freq_box.setRange(0, self.stim_freq_max)
         self.stim_freq_box.setValue(self.stim_freq)
         self.stim_freq_box.valueChanged.connect(self.update_stimulation)
+        
+        # BLE device
+        self.ble_device_input = QtWidgets.QLineEdit()
+        self.ble_device_input.setPlaceholderText("Enter BLE device name")
 
+        self.ble_connect_btn = QtWidgets.QPushButton("Connect BLE")
+        self.ble_connect_btn.clicked.connect(self.connect_ble_device)
+
+        self.ble_status = QtWidgets.QLabel("Status: DISCONNECTED")
+        self.ble_status.setStyleSheet("color: red;")
+        
+        
         # Add controls to layout
         controls.addWidget(self.btn)
         controls.addWidget(self.trigger_btn)
@@ -121,6 +132,9 @@ class RecordingTab(QtWidgets.QWidget):
         controls.addWidget(QtWidgets.QLabel("Stimulation Frequency"))
         controls.addWidget(self.stim_freq_box)
         controls.addWidget(self.stim_button)
+        controls.addWidget(self.ble_device_input)
+        controls.addWidget(self.ble_connect_btn)
+        controls.addWidget(self.ble_status)
         controls.addStretch()
 
         # Add plots
@@ -337,3 +351,6 @@ class RecordingTab(QtWidgets.QWidget):
 
             self.engine.add_marker(marker_id)
             self.add_marker(marker_id, idx)
+            
+    def connect_ble_device(self):
+        return

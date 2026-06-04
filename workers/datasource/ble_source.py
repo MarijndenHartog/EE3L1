@@ -43,7 +43,7 @@ class BLESource(threading.Thread, DataSource):
         print("BLESource (persistent) initialized")
 
     # =========================================================
-    # COMMANDS (ONLY TOGGLES, NO THREAD LIFECYCLE)
+    # COMMANDS
     # =========================================================
     def cmd_start(self):
         print("BLESource: START")
@@ -104,7 +104,7 @@ class BLESource(threading.Thread, DataSource):
 
         self.ack_stop.set()
         
-    def stimulate_start(self):
+    def cmd_stimulate_start(self):
         print("BLESource: STIMULATE START")
 
         self._streaming = False
@@ -122,7 +122,7 @@ class BLESource(threading.Thread, DataSource):
 
         self.ack_stop.set()
         
-    def stimulate_stop(self):
+    def cmd_stimulate_stop(self):
         print("BLESource: STIMULATE STOP")
 
         self._streaming = False
@@ -272,7 +272,7 @@ class BLESource(threading.Thread, DataSource):
         self.loop.run_until_complete(self._ble_loop())
 
     # =========================================================
-    # THREAD START (ONLY ONCE EVER)
+    # THREAD START
     # =========================================================
     def start(self):
         if self.is_alive():
@@ -280,10 +280,10 @@ class BLESource(threading.Thread, DataSource):
         super().start()
 
     # =========================================================
-    # STOP = ONLY STOPS STREAM, NOT THREAD
+    # STOP
     # =========================================================
     def stop(self):
-        print("BLESource STOP (soft)")
+        print("BLESource STOP")
 
         self.cmd_stop()
 
