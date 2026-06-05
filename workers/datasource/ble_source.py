@@ -202,19 +202,5 @@ class BLESource:
 
 
 
-
-if __name__ == "__main__":
-    ble = BLESource()
-    main_ble()
     
-async def main_ble():
-    await ble.connect("grompack")
-    await ble.cmd_start()
-
-    # streaming loopt nu via notifications
-    # ontvangen packets gaan automatisch naar:
-    # pipeline.push_raw(packet)
-
-    await ble.cmd_stop()
-    await ble.disconnect()
     
