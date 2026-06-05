@@ -1,3 +1,5 @@
+import threading
+
 from workers.datasource.synthetic_source import SyntheticBLESource
 from workers.dsp import DSPThread, DSPState
 from workers.writer import WAVWriter
@@ -45,8 +47,8 @@ class RecordingEngine:
     def _init_source(self):
 
         if self.REAL_DATA:
-            self.source = BLESource(self.pipeline, channels=self.channels)
-            self.source.start()   # 🔥 ONLY ONCE EVER
+            self.source = BLESource(self.pipeline)
+            self.source.start()   
         else:
             self.source = SyntheticBLESource(self.pipeline, config=self.config)
             self.source.start()
@@ -63,6 +65,8 @@ class RecordingEngine:
             output_prefix="session",
             session_id=self.session_id
         )
+
+        self.marker_logger.start()
     # =========================================================
     # START SESSION
     # =========================================================
@@ -73,6 +77,7 @@ class RecordingEngine:
 
         self.start_session()
 
+        # NEW DSP per session
         self.dsp = DSPThread(
             ring_buffer=self.raw_buffer,
             pipeline=self.pipeline,
@@ -97,6 +102,8 @@ class RecordingEngine:
         self.writer.start()
 
         self._running = True
+        
+        print(threading.enumerate())
 
     # =========================================================
     # STOP SESSION
@@ -107,11 +114,22 @@ class RecordingEngine:
             return
 
         self.source.cmd_stop()
+        self.source.join(timeout=2.0)
 
-        self.dsp.stop()
-        self.writer.stop()
+        # stop + join DSP
+        if self.dsp:
+            self.dsp.stop()
+            self.dsp.join(timeout=2.0)
+            self.dsp = None
+
+        if self.writer:
+            self.writer.stop()
+            self.writer.join(timeout=2.0)
+            self.writer = None
 
         self._running = False
+        
+        print(threading.enumerate())
         
     # ============================================================
     # ACCESSORS

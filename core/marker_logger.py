@@ -28,7 +28,6 @@ class MarkerLogger:
         self._init_file()
 
         self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
 
     # ------------------------------------------------------------
     def _init_file(self):
@@ -87,6 +86,11 @@ class MarkerLogger:
                 os.fsync(f.fileno())
 
     # ------------------------------------------------------------
+    def start(self):
+        if not self.thread.is_alive():
+            self._stop.clear()
+            self.thread.start()
+    
     def stop(self):
         self._stop.set()
         self.thread.join(timeout=2.0)

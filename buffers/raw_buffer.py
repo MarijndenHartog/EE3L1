@@ -119,3 +119,15 @@ class CircularBuffer:
 
     def get_overruns(self, name):
         return self.overruns.get(name, 0)
+    
+    
+    def reset(self):
+        with self.lock:
+            self.buffer.fill(0)
+            self.write_idx = 0
+            self.read_ptrs.clear()
+            self.overruns.clear()
+            
+        
+            
+    

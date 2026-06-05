@@ -3,7 +3,6 @@ import struct
 import threading
 import numpy as np
 from bleak import BleakClient, BleakScanner
-
 from workers.datasource.source_abstraction import DataSource, SourceState
 
 
@@ -23,7 +22,6 @@ class BLESource(threading.Thread, DataSource):
         super().__init__(daemon=True)
 
         self.pipeline = pipeline
-        self.channels = channels
 
         # lifecycle (thread NEVER stops)
         self._running = True
@@ -45,7 +43,7 @@ class BLESource(threading.Thread, DataSource):
         print("BLESource (persistent) initialized")
 
     # =========================================================
-    # COMMANDS (ONLY TOGGLES, NO THREAD LIFECYCLE)
+    # COMMANDS
     # =========================================================
     def cmd_start(self):
         print("BLESource: START")
@@ -56,10 +54,15 @@ class BLESource(threading.Thread, DataSource):
         self.state = SourceState.STREAMING
 
         if self.loop and self.client:
-            asyncio.run_coroutine_threadsafe(
-                self.client.write_gatt_char(self.NUS_RX_UUID, b"\x01"),
+            future = asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.rx_char, b"\x01"),
                 self.loop
             )
+            try:
+                # 2 second timeout to catch immediate write errors without freezing the thread
+                future.result(timeout=2.0) 
+            except Exception as e:
+                print(f"[ERROR] Failed to send START command: {e}")
 
         self.ack_start.set()
 
@@ -70,13 +73,73 @@ class BLESource(threading.Thread, DataSource):
         self.state = SourceState.READY
 
         if self.loop and self.client:
-            asyncio.run_coroutine_threadsafe(
-                self.client.write_gatt_char(self.NUS_RX_UUID, b"\x02"),
+            future = asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.rx_char, b"\x02"),
                 self.loop
             )
+            try:
+                future.result(timeout=2.0)
+            except Exception as e:
+                print(f"[ERROR] Failed to send STOP command: {e}")
 
         self.ack_stop.set()
 
+    def cmd_burst(self, duration_ms, frequency_hz):
+        print("BLESource: STIMULATE BURST")
+
+        self._streaming = False
+        self.state = SourceState.READY
+
+        payload = struct.pack("<BII", 0x05, duration_ms, frequency_hz)
+
+        if self.loop and self.client:
+            future = asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.rx_char, payload),
+                self.loop
+            )
+            try:
+                future.result(timeout=2.0)
+            except Exception as e:
+                print(f"[ERROR] Failed to send STIMULATE BURST command: {e}")
+
+        self.ack_stop.set()
+        
+    def cmd_stimulate_start(self):
+        print("BLESource: STIMULATE START")
+
+        self._streaming = False
+        self.state = SourceState.READY
+
+        if self.loop and self.client:
+            future = asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.rx_char, b"\x03"),
+                self.loop
+            )
+            try:
+                future.result(timeout=2.0)
+            except Exception as e:
+                print(f"[ERROR] Failed to send STIMULATE START command: {e}")
+
+        self.ack_stop.set()
+        
+    def cmd_stimulate_stop(self):
+        print("BLESource: STIMULATE STOP")
+
+        self._streaming = False
+        self.state = SourceState.READY
+
+        if self.loop and self.client:
+            future = asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.rx_char, b"\x04"),
+                self.loop
+            )
+            try:
+                future.result(timeout=2.0)
+            except Exception as e:
+                print(f"[ERROR] Failed to send STIMULATE STOP command: {e}")
+
+        self.ack_stop.set()
+        
     # =========================================================
     # DECODER
     # =========================================================
@@ -104,16 +167,12 @@ class BLESource(threading.Thread, DataSource):
     # CALLBACK
     # =========================================================
     def _on_notify(self, handle, data):
-        print("1")
 
         if not self._streaming:
             print("Received BLE packet while not streaming, ignoring")
-            print("2")
             return
-        print("3")
 
         packet = self._decode_packet(data)
-        print("4")
 
         if packet is None:
             return
@@ -138,25 +197,16 @@ class BLESource(threading.Thread, DataSource):
             raise RuntimeError("BLE device not found")
 
         print(f"Found {device.name}")
-
         self.state = SourceState.CONNECTING
 
-        async with BleakClient(device.address) as client:
+        # FIX 1: Pass the device object, not device.address
+        async with BleakClient(device) as client:
 
-            self.client = client  # keep reference for cmd_start/cmd_stop
-
+            self.client = client
             print("BLE connected")
 
-            self.state = SourceState.READY
-            self.connected.set()
-
-            # IMPORTANT: ensure services are discovered (like tester implicitly does)
-            await client.get_services()
-
-            for svc in client.services:
-                print(f"  Service: {svc.uuid}")
-                for ch in svc.characteristics:
-                    print(f"    Char: {ch.uuid}  handle={ch.handle}  props={ch.properties}")
+            # FIX 2: Do NOT set self.connected.set() here yet!
+            # await client.get_services()
 
             nus_service = next(
                 (s for s in client.services if s.uuid.lower() == self.NUS_SERVICE_UUID.lower()),
@@ -174,31 +224,36 @@ class BLESource(threading.Thread, DataSource):
                 None
             )
 
-            if not tx_char:
+            # FIX 3: Explicitly resolve and save the RX characteristic 
+            self.rx_char = next(
+                (c for c in nus_service.characteristics
+                if c.uuid.lower() == self.NUS_RX_UUID.lower()),
+                None
+            )
+
+            if not tx_char or not self.rx_char:
                 self.state = SourceState.ERROR
-                print("[ERROR] TX characteristic not found")
+                print("[ERROR] TX or RX characteristic not found")
                 return
 
             print(f"Using TX char at handle {tx_char.handle}")
-
             await client.start_notify(tx_char, self._on_notify)
-
             print("Subscribed. Streaming ...\n")
             
+            # FIX 4: Set the connected flag ONLY when everything is truly ready
+            self.state = SourceState.READY
+            self.connected.set()
 
             try:
                 while self._running:
                     await asyncio.sleep(0.1)
             finally:
                 print("Stopping BLE...")
-
                 try:
                     await client.stop_notify(tx_char)
                 except Exception:
                     pass
-
                 self.state = SourceState.DISCONNECTED
-
 
     # =========================================================
     # THREAD ENTRY (RUN ONCE ONLY)
@@ -230,3 +285,93 @@ class BLESource(threading.Thread, DataSource):
 
         self._running = False
         self.state = SourceState.DISCONNECTED
+        
+        
+        
+"""
+async def _ble_loop(self):
+
+        self.state = SourceState.CONNECTING
+        print("Scanning BLE devices...")
+
+        device = await BleakScanner.find_device_by_name(
+            self.DEVICE_NAME,
+            timeout=10.0
+        )
+
+        if device is None:
+            self.state = SourceState.ERROR
+            raise RuntimeError("BLE device not found")
+
+        print(f"Found {device.name}")
+        self.state = SourceState.CONNECTING
+
+        # FIX 1: Pass the device object, not device.address
+        async with BleakClient(device) as client:
+
+            self.client = client
+            print("BLE connected")
+
+            # FIX 2: Do NOT set self.connected.set() here yet!
+            # await client.get_services()
+
+            nus_service = next(
+                (s for s in client.services if s.uuid.lower() == self.NUS_SERVICE_UUID.lower()),
+                None
+            )
+
+            if not nus_service:
+                self.state = SourceState.ERROR
+                print("[ERROR] NUS service not found")
+                return
+
+            tx_char = next(
+                (c for c in nus_service.characteristics
+                if c.uuid.lower() == self.NUS_TX_UUID.lower()),
+                None
+            )
+
+            # FIX 3: Explicitly resolve and save the RX characteristic 
+            self.rx_char = next(
+                (c for c in nus_service.characteristics
+                if c.uuid.lower() == self.NUS_RX_UUID.lower()),
+                None
+            )
+
+            if not tx_char or not self.rx_char:
+                self.state = SourceState.ERROR
+                print("[ERROR] TX or RX characteristic not found")
+                return
+
+            print(f"Using TX char at handle {tx_char.handle}")
+            await client.start_notify(tx_char, self._on_notify)
+            print("Subscribed. Streaming ...\n")
+            
+            # FIX 4: Set the connected flag ONLY when everything is truly ready
+            self.state = SourceState.READY
+            self.connected.set()
+
+            try:
+                while self._running:
+                    await asyncio.sleep(0.1)
+            finally:
+                print("Stopping BLE...")
+                try:
+                    await client.stop_notify(tx_char)
+                except Exception:
+                    pass
+                self.state = SourceState.DISCONNECTED
+
+    # =========================================================
+    # THREAD ENTRY (RUN ONCE ONLY)
+    # =========================================================
+    def run(self):
+
+        print("BLESource thread started")
+
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+        self.loop.run_until_complete(self._ble_loop())
+
+"""

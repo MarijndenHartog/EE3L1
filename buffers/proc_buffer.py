@@ -87,3 +87,9 @@ class ProcessedBuffer:
                 ))
 
             return out.copy()
+        
+    def reset(self):
+        with self.lock:
+            self.write_idx = 0
+            self.filled = 0
+            self.buffer.fill(0)
