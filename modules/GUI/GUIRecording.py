@@ -175,7 +175,7 @@ class RecordingTab(QtWidgets.QWidget):
 
         if self.running:
             self.btn.setText("Stop")
-            self.engine.start()
+            self.engine.start(device="grompack")
         else:
             self.btn.setText("Start")
             self.engine.stop()

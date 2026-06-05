@@ -1,20 +1,12 @@
 import threading
 import time
 import numpy as np
-
 from settings.settings import SAMPLE_RATE, PACKET_SIZE
-from workers.datasource.source_abstraction import DataSource, SourceState
 from simulations.stress_config import BLEStressConfig
 
-        
 
-
-class SyntheticBLESource(threading.Thread, DataSource):
-
+class SyntheticBLESource:
     def __init__(self, pipeline, config=BLEStressConfig()):
-
-        super().__init__(daemon=True)
-
         self.pipeline = pipeline
         self.config = config
 
@@ -23,11 +15,8 @@ class SyntheticBLESource(threading.Thread, DataSource):
 
         self._running = False
         self._streaming = False
-
-        self.ack_start = threading.Event()
-        self.ack_stop = threading.Event()
-
-        self.state = SourceState.DISCONNECTED
+        
+        self.ack = False
 
         # congestion simulation buffer
         self._queue = []
@@ -35,21 +24,42 @@ class SyntheticBLESource(threading.Thread, DataSource):
         # timing
         self._next_t = time.perf_counter()
 
+        # worker thread (created on demand)
+        self._thread = None
+
     # =========================================================
     # CONTROL
     # =========================================================
     def cmd_start(self):
+        if self._streaming:
+            return
+
         self._streaming = True
-        self.state = SourceState.STREAMING
-        self.ack_start.set()
+        self._running = True
+
+        self._thread = threading.Thread(
+            target=self._run_loop,
+            daemon=True
+        )
+        self._thread.start()
+        
+        self.ack = True
 
     def cmd_stop(self):
+        if not self._streaming:
+            return
+
         self._streaming = False
-        self.state = SourceState.READY
-        self.ack_stop.set()
+        self._running = False
+
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+            
+        self.ack = True
 
     # =========================================================
-    # SIGNAL
+    # SIGNAL GENERATION
     # =========================================================
     def _generate(self, n):
         noise = np.random.randn(n)
@@ -77,16 +87,13 @@ class SyntheticBLESource(threading.Thread, DataSource):
 
         signal = noise + spikes
         return np.clip(signal, -8192, 8191).astype(np.int16)
-    
-    # =========================================================
-    # RUN LOOP
-    # =========================================================
-    def run(self):
 
+    # =========================================================
+    # WORKER LOOP
+    # =========================================================
+    def _run_loop(self):
         dt = self.packet_size / self.sample_rate
         self._next_t = time.perf_counter()
-
-        self._running = True
 
         while self._running:
 
@@ -111,11 +118,11 @@ class SyntheticBLESource(threading.Thread, DataSource):
                     continue
 
             # =====================================================
-            # CONGESTION (QUEUE LIMIT)
+            # CONGESTION
             # =====================================================
             if self.config.enable_congestion:
                 if len(self._queue) >= self.config.max_queue_size:
-                    self._queue.pop(0)  # drop oldest (real BLE behavior)
+                    self._queue.pop(0)
 
             self._queue.append(packet)
 
@@ -132,18 +139,16 @@ class SyntheticBLESource(threading.Thread, DataSource):
                 time.sleep(np.random.uniform(*self.config.stall_ms) / 1000)
 
             # =====================================================
-            # FLUSH BEHAVIOR (BLE batching)
+            # FLUSH BEHAVIOR
             # =====================================================
             if len(self._queue) >= self.config.flush_threshold:
-
                 while self._queue:
                     self.pipeline.push_raw(self._queue.pop(0))
-
             else:
                 self.pipeline.push_raw(packet)
 
             # =====================================================
-            # JITTER (TIME DOMAIN)
+            # TIMING CONTROL (jitter + pacing)
             # =====================================================
             self._next_t += dt
 
@@ -156,19 +161,13 @@ class SyntheticBLESource(threading.Thread, DataSource):
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-            # recovery if system stalls
+            # recovery if lagging badly
             if time.perf_counter() - self._next_t > 1.0:
                 self._next_t = time.perf_counter()
-
-    # =========================================================
-    # THREAD CONTROL
-    # =========================================================
-    def start(self):
-        if self.is_alive():
-            return
-        super().start()
-
-    def stop(self):
-        self._streaming = False
-        self._running = False
-        self.state = SourceState.DISCONNECTED
+                
+    def connect(self, device):
+        print(device)
+        self.ack = True
+        
+    def disconnect(self):
+        self.ack = True
