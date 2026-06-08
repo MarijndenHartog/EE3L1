@@ -5,7 +5,7 @@ class BLEStressConfig:
         # JITTER
         # =========================
         enable_jitter=True,
-        jitter_ms_std=5,
+        jitter_ms_std=100,
 
         # =========================
         # PACKET LOSS

@@ -51,7 +51,6 @@ class CircularBuffer:
                 self.buffer[wp:] = samples[:first]
                 self.buffer[:self.write_idx] = samples[first:]
 
-            # IMPORTANT: detect overwrite risk for slow consumers
             for name in self.read_ptrs:
                 rp = self.read_ptrs[name]
 

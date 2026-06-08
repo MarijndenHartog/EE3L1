@@ -4,6 +4,7 @@ class Pipeline:
         self.raw = raw_buffer
         self.proc = proc_buffer
         self.sample_index = 0
+        self.live_idx = 0
 
     def get_raw(self, n):
         return self.raw.read(n)
@@ -21,7 +22,12 @@ class Pipeline:
     def get_sample_index(self):
         return self.sample_index
     
+    def live_counter(self):
+        self.live_idx += 240
+        
+    
     def reset(self):
         self.raw.reset()
         self.proc.reset()
         self.sample_index = 0
+        self.live_idx

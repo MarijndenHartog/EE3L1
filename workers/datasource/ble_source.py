@@ -1,185 +1,261 @@
-import struct
+import asyncio
 import threading
-
+import struct
 import numpy as np
+from enum import Enum
+from dataclasses import dataclass
+from typing import Callable, Optional, List
+
 from bleak import BleakClient, BleakScanner
 
-import asyncio
-import threading
 
-import asyncio
-import threading
+# =========================
+# BLE UUIDs (Nordic UART Service)
+# =========================
+NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+NUS_TX_CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
 
-class BLEThreadWrapper:
-    def __init__(self, ble_source):
-        self.ble = ble_source
-        self.loop = asyncio.new_event_loop()
-        self.thread = threading.Thread(target=self._run_loop, daemon=True)
+# =========================
+# Packet configuration
+# =========================
+PACKED_BUFFER_SIZE = 240
+PACKET_FORMAT = f"<I{PACKED_BUFFER_SIZE}s"
 
-    def _run_loop(self):
-        asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
 
-    def start(self):
-        self.thread.start()
+# =========================
+# Device state
+# =========================
+class DeviceState(Enum):
+    DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    STREAMING = "streaming"
 
-    def run(self, coro):
-        """Submit coroutine to BLE asyncio loop"""
-        return asyncio.run_coroutine_threadsafe(coro, self.loop)
 
+# =========================
+# BLE device model
+# =========================
+@dataclass
+class BLEDeviceInfo:
+    name: str
+    address: str
+
+
+# =========================
+# BLE Client
+# =========================
 class BLESource:
-    NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
-    NUS_TX_CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
-
-    CMD_START = 0x01
-    CMD_STOP = 0x02
-    CMD_BURST = 0x03
-
-    PACKED_BUFFER_SIZE = 240
-    PACKET_FORMAT = f"<I{PACKED_BUFFER_SIZE}s"
-    PACKET_SIZE = struct.calcsize(PACKET_FORMAT)
-
-    def __init__(self, pipeline=None):
+    def __init__(self, pipeline, debug: bool = False):
         self.pipeline = pipeline
+        self.debug = debug
 
-        self.client = None
-        self.device = None
+        self._client: Optional[BleakClient] = None
+        self._device = None
 
-        self._streaming = False
+        self.state = DeviceState.DISCONNECTED
+
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+
+        self._data_callback: Optional[Callable[[np.ndarray], None]] = None
+        self._state_callback: Optional[Callable[[DeviceState], None]] = None
+
         self._lock = threading.Lock()
 
-    async def connect(self, device):
-        """
-        Connect to a BLE device.
+        self.last_packet_header = None
 
-        Parameters
-        ----------
-        device : str | BLEDevice
-            Address or Bleak BLEDevice.
-        """
-        self.device = device
-        self.client = BleakClient(device)
+        self._thread.start()
 
-        await self.client.connect()
+    # =========================
+    # Public callbacks
+    # =========================
+    def set_data_callback(self, callback: Callable[[np.ndarray], None]):
+        self._data_callback = callback
 
-        print(f"[BLE] Connected to {device}")
+    def set_state_callback(self, callback: Callable[[DeviceState], None]):
+        self._state_callback = callback
 
-    async def disconnect(self):
-        """
-        Stop streaming and disconnect.
-        """
-        if self.client is None:
+    # =========================
+    # Async loop
+    # =========================
+    def _run_loop(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    # =========================
+    # DEVICE SCANNING (GUI)
+    # =========================
+    async def scan_devices(self, timeout: float = 3.0) -> List[BLEDeviceInfo]:
+        devices = await BleakScanner.discover(timeout=timeout)
+
+        results = []
+        for d in devices:
+            if d.name:
+                results.append(BLEDeviceInfo(
+                    name=d.name,
+                    address=d.address
+                ))
+
+        return results
+
+    def scan_devices_sync(self, timeout: float = 3.0):
+        return asyncio.run_coroutine_threadsafe(
+            self.scan_devices(timeout),
+            self._loop
+        ).result()
+
+    # =========================
+    # CONNECTION (by address)
+    # =========================
+    def connect_to_address(self, address: str):
+        asyncio.run_coroutine_threadsafe(
+            self._connect_by_address(address),
+            self._loop
+        )
+
+    async def _connect_by_address(self, address: str):
+        self._set_state(DeviceState.CONNECTING)
+
+        device = await BleakScanner.find_device_by_address(address)
+
+        if not device:
+            if self.debug:
+                print("[BLE] device not found")
+            self._set_state(DeviceState.DISCONNECTED)
             return
 
+        self._device = device
+        self._client = BleakClient(device)
+
         try:
-            await self.cmd_stop()
-        except Exception:
-            pass
+            await self._client.connect()
+            self._set_state(DeviceState.CONNECTED)
 
-        if self.client.is_connected:
-            await self.client.disconnect()
-
-        print("[BLE] Disconnected")
-
-    async def cmd_start(self):
-        """
-        Send start streaming command (0x01).
-        """
-        if self.client is None:
-            raise RuntimeError("BLE device not connected")
-
-        if not self._streaming:
-            await self.client.start_notify(
-                self.NUS_TX_CHAR_UUID,
-                self._notification_handler,
+            await self._client.start_notify(
+                NUS_TX_CHAR_UUID,
+                self._notification_handler
             )
-            self._streaming = True
 
-        await self.client.write_gatt_char(
-            self.NUS_RX_CHAR_UUID,
-            bytes([self.CMD_START]),
+        except Exception as e:
+            if self.debug:
+                print("[BLE] connect error:", e)
+            self._set_state(DeviceState.DISCONNECTED)
+
+    # =========================
+    # DISCONNECT
+    # =========================
+    def disconnect(self):
+        asyncio.run_coroutine_threadsafe(
+            self._disconnect(),
+            self._loop
         )
 
-        print("[BLE] Streaming started")
+    async def _disconnect(self):
+        if self._client and self._client.is_connected:
+            try:
+                await self._client.stop_notify(NUS_TX_CHAR_UUID)
+                await self._client.disconnect()
+            except Exception as e:
+                if self.debug:
+                    print("[BLE] disconnect error:", e)
 
-    async def cmd_stop(self):
-        """
-        Send stop streaming command (0x02).
-        """
-        if self.client is None:
+        self._set_state(DeviceState.DISCONNECTED)
+
+    # =========================
+    # SWITCH DEVICE
+    # =========================
+    def switch_device(self, address: str):
+        asyncio.run_coroutine_threadsafe(
+            self._switch_device(address),
+            self._loop
+        )
+
+    async def _switch_device(self, address: str):
+        await self._disconnect()
+        await self._connect_by_address(address)
+
+    # =========================
+    # COMMANDS
+    # =========================
+    def start_stream(self):
+        self._write_cmd(b"\x01")
+
+    def stop_stream(self):
+        self._write_cmd(b"\x02")
+
+    def stimulate(self, frequency_hz: float, duration_ms: int):
+        cmd = bytes([
+            0x03,
+            int(frequency_hz) & 0xFF,
+            (int(frequency_hz) >> 8) & 0xFF,
+            duration_ms & 0xFF,
+            (duration_ms >> 8) & 0xFF
+        ])
+        self._write_cmd(cmd)
+
+    def _write_cmd(self, data: bytes):
+        asyncio.run_coroutine_threadsafe(
+            self._write(data),
+            self._loop
+        )
+
+    async def _write(self, data: bytes):
+        if not self._client or not self._client.is_connected:
             return
 
-        await self.client.write_gatt_char(
-            self.NUS_RX_CHAR_UUID,
-            bytes([self.CMD_STOP]),
-        )
+        try:
+            await self._client.write_gatt_char(NUS_RX_CHAR_UUID, data)
+        except Exception as e:
+            if self.debug:
+                print("[BLE] write error:", e)
 
-        with self._lock:
-            if self._streaming:
-                try:
-                    await self.client.stop_notify(self.NUS_TX_CHAR_UUID)
-                except Exception:
-                    pass
+    # =========================
+    # NOTIFICATIONS
+    # =========================
+    def _notification_handler(self, sender: int, data: bytes):
+        try:
+            decoded = self._decode_packet(data)
 
-                self._streaming = False
+            if decoded is not None:
+                if self.debug:
+                    print(decoded)
+                else: 
+                    self.pipeline.push_raw(decoded)
 
-        print("[BLE] Streaming stopped")
+                if self._data_callback:
+                    self._data_callback(decoded)
 
-    async def cmd_burst(self, duration_ms, frequency_hz):
-        """
-        Send burst command (0x03).
+        except Exception as e:
+            if self.debug:
+                print("[BLE] notification error:", e)
 
-        Payload:
-            [0x03][duration_ms:uint16][frequency_hz:uint16]
-        """
-        if self.client is None:
-            raise RuntimeError("BLE device not connected")
-
-        payload = struct.pack(
-            "<BHH",
-            self.CMD_BURST,
-            int(duration_ms),
-            int(frequency_hz),
-        )
-
-        await self.client.write_gatt_char(
-            self.NUS_RX_CHAR_UUID,
-            payload,
-        )
-
-        print(
-            f"[BLE] Burst command: duration={duration_ms} ms, "
-            f"frequency={frequency_hz} Hz"
-        )
-
-    def _notification_handler(self, sender, data):
-        """
-        Called by Bleak whenever a packet is received.
-        """
-        if not self._streaming:
-            return
-
-        packet = self._decode_packet(data)
-
-        if packet is not None:
-            #self.pipeline.push_raw(packet)
-            print(packet)
-
+    # =========================
+    # PACKET DECODER
+    # =========================
     def _decode_packet(self, data):
+        expected_size = struct.calcsize(PACKET_FORMAT)
 
-        if len(data) < self.PACKET_SIZE:
+        if data is None or len(data) < expected_size:
             return None
 
         try:
-            _, packed = struct.unpack_from(self.PACKET_FORMAT, data)
+            header, packed = struct.unpack_from(PACKET_FORMAT, data)
         except Exception as e:
-            print("[BLE] unpack error:", e)
+            if self.debug:
+                print("[BLE] unpack error:", e)
             return None
 
-        samples = []
+        self.last_packet_header = header
 
-        for i in range(0, min(len(packed), self.PACKED_BUFFER_SIZE), 3):
+        max_len = (len(packed) // 3) * 3
+        if max_len == 0:
+            return None
+
+        samples = np.empty((max_len // 3, 2), dtype=np.int16)
+
+        idx = 0
+        for i in range(0, max_len, 3):
             b0 = packed[i]
             b1 = packed[i + 1]
             b2 = packed[i + 2]
@@ -188,19 +264,57 @@ class BLESource:
             s2 = (b1 >> 4) | (b2 << 4)
             s2 &= 0x0FFF
 
-            samples.append((s1, s2))
+            samples[idx, 0] = s1
+            samples[idx, 1] = s2
+            idx += 1
 
-        out = np.asarray(samples, dtype=np.int16)
+        if self.debug:
+            print(f"[BLE] header={header}, samples={len(samples)}")
 
-        print(f"[BLE] decoded samples: {len(out)}")
-        return out
-    
-    async def find_device(self, name: str):
-        return await BleakScanner.find_device_by_name(name, timeout=10.0)
-    
-    
+        return samples
 
+    # =========================
+    # STATE MANAGEMENT
+    # =========================
+    def get_state(self) -> DeviceState:
+        return self.state
 
+    def _set_state(self, new_state: DeviceState):
+        with self._lock:
+            self.state = new_state
 
-    
-    
+        if self._state_callback:
+            self._state_callback(new_state)
+            
+            
+if __name__ == "__main__":
+    import time
+
+    ble = BLESource(pipeline="pipeline", debug=True)
+
+    # 1. scan devices
+    devices = ble.scan_devices_sync()
+
+    for d in devices:
+        print(d.name, d.address)
+
+    # 2. connect to first device
+    ble.connect_to_address(devices[0].address)
+
+    time.sleep(2)
+
+    # 3. start streaming
+    ble.start_stream()
+
+    time.sleep(5)
+
+    # 4. stimulation command
+    ble.stimulate(20, 500)
+
+    time.sleep(2)
+
+    # 5. stop streaming
+    ble.stop_stream()
+
+    # 6. disconnect
+    ble.disconnect()

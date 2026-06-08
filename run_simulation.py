@@ -10,7 +10,38 @@ def run():
     app = QtWidgets.QApplication(sys.argv)
 
     # 1. engine (real or simulated)
-    configuration = BLEStressConfig(enable_packet_loss=False, enable_congestion=False, enable_burst=False, enable_stall=False)  # clean config for testing
+    configuration = BLEStressConfig(
+        enable_jitter=True,
+        jitter_ms_std=10,
+
+        # =========================
+        # PACKET LOSS
+        # =========================
+        enable_packet_loss=False,
+        packet_loss_prob=0.01,
+
+        # =========================
+        # BURST (micro congestion)
+        # =========================
+        enable_burst=True,
+        burst_prob=0.02,
+        burst_delay_ms=(5, 30),
+
+        # =========================
+        # STALL (BLE freeze events)
+        # =========================
+        enable_stall=True,
+        stall_prob=0.01,
+        stall_ms=(50, 200),
+
+        # =========================
+        # QUEUE / CONGESTION
+        # =========================
+        enable_congestion=True,
+        max_queue_size=10,
+        flush_threshold=3,
+        
+        )  # clean config for testing
     
     engine = RecordingEngine(REAL_DATA=False, config=configuration)   
     

@@ -12,7 +12,8 @@ from settings.settings import (
     STIMULATION_TIME_MS,
     STIMULATION_FREQUENCY_HZ,
     STIMULATION_TIME_MAX,
-    STIMULATION_FREQUENCY_MAX
+    STIMULATION_FREQUENCY_MAX,
+    REFRESH_FPS
 )
 
 
@@ -62,6 +63,9 @@ class RecordingTab(QtWidgets.QWidget):
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(UPDATE_TIME)
+        
+        self.plot_counter = 0 ##################Remove later
+        
 
     # ============================================================
     # UI
@@ -221,24 +225,34 @@ class RecordingTab(QtWidgets.QWidget):
         )
 
         self.plot1.addItem(line)
-        self.markers.append((marker_id, idx, line))
 
-    def update_marker_positions(self, window_end):
+        # Marker start aan rechterkant van het zichtbare venster
+        pos = float(self.NORMAL_VISIBLE_SAMPLES)
 
-        window_size = self.NORMAL_VISIBLE_SAMPLES
-        window_start = window_end - window_size
+        self.markers.append((marker_id, pos, line))
 
-        for marker_id, idx, line in self.markers:
+    def update_marker_positions(self, step):
 
-            if idx < window_start or idx > window_end:
-                line.setVisible(False)
+        alive = []
+
+        for marker_id, pos, line in self.markers:
+
+            # schuif marker mee met de plot
+            pos -= step
+
+            # marker is uit beeld
+            if pos < 0:
+                self.plot1.removeItem(line)
                 continue
 
-            line.setVisible(True)
+            x_ms = (pos / self.sample_rate) * 1000
 
-            x_samples = idx - window_start
-            x_ms = (x_samples / self.sample_rate) * 1000
+            line.setVisible(True)
             line.setPos(x_ms)
+
+            alive.append((marker_id, pos, line))
+
+        self.markers = alive
 
     # ============================================================
     # TRIGGER DRAW
@@ -269,12 +283,18 @@ class RecordingTab(QtWidgets.QWidget):
     # UPDATE LOOP
     # ============================================================
     def update_plot(self):
-
-        data = self.pipeline.get_processed(self.NORMAL_VISIBLE_SAMPLES)
+        
+        n = int(self.NORMAL_VISIBLE_SAMPLES)
+        data, step = self.pipeline.get_processed(n = n)
         data = np.asarray(data)
-
+        
         if data.size == 0 or data.ndim != 2 or data.shape[1] < 2:
             return
+        
+        self.plot_counter += step    ################Remove later
+        live_lag = np.round((self.pipeline.live_idx - self.plot_counter) / SAMPLE_RATE, 3)
+        buffer_lag = np.round((self.pipeline.get_sample_index() - self.plot_counter) / SAMPLE_RATE, 3)
+        print(live_lag, buffer_lag, step, self.pipeline.proc.write_idx, self.pipeline.proc.read_idx + 36000)
 
         ch1 = data[:, 0]
         ch2 = data[:, 1]
@@ -297,9 +317,7 @@ class RecordingTab(QtWidgets.QWidget):
             self.plot1.setXRange(0, NORMAL_WINDOW_MS)
             self.plot2.setXRange(0, NORMAL_WINDOW_MS)
 
-            window_end = self.pipeline.get_sample_index()
-            self.update_marker_positions(window_end)
-
+            self.update_marker_positions(step)
             return
 
         # ========================================================
@@ -347,10 +365,8 @@ class RecordingTab(QtWidgets.QWidget):
         if QtCore.Qt.Key_1 <= key <= QtCore.Qt.Key_9:
 
             marker_id = key - QtCore.Qt.Key_0
-            idx = self.pipeline.get_sample_index()
-
             self.engine.add_marker(marker_id)
-            self.add_marker(marker_id, idx)
+            self.add_marker(marker_id, None)
             
     def connect_ble_device(self):
         return

@@ -26,6 +26,8 @@ class SyntheticBLESource:
 
         # worker thread (created on demand)
         self._thread = None
+        
+        self._gen_counter = 0
 
     # =========================================================
     # CONTROL
@@ -93,77 +95,92 @@ class SyntheticBLESource:
     # =========================================================
     def _run_loop(self):
         dt = self.packet_size / self.sample_rate
-        self._next_t = time.perf_counter()
+        next_t = time.perf_counter()
 
         while self._running:
 
             if not self._streaming:
                 time.sleep(0.01)
-                self._next_t = time.perf_counter()
+                next_t = time.perf_counter()
                 continue
 
             # =====================================================
             # PACKET GENERATION
             # =====================================================
             packet = np.stack([
-                self._generate(self.packet_size),
+                self._generate_simple(self.packet_size),
                 self._generate(self.packet_size)
             ], axis=1)
+            
+            self.pipeline.live_counter()
 
             # =====================================================
-            # PACKET LOSS
+            # PACKET LOSS (before queue)
             # =====================================================
             if self.config.enable_packet_loss:
                 if np.random.rand() < self.config.packet_loss_prob:
                     continue
-
+                
+            
             # =====================================================
-            # CONGESTION
+            # CONGESTION QUEUE (single source of truth)
             # =====================================================
             if self.config.enable_congestion:
-                if len(self._queue) >= self.config.max_queue_size:
+                self._queue.append(packet)
+
+                # simulate congestion drop (queue overflow)
+                if len(self._queue) > self.config.max_queue_size:
                     self._queue.pop(0)
 
-            self._queue.append(packet)
+                # optional: only release when “network allows”
+                if len(self._queue) < self.config.flush_threshold:
+                    # still congested → DO NOT SEND
+                    pass
+                else:
+                    # release ONE packet (not full flush)
+                    self.pipeline.push_raw(self._queue.pop(0))
+
+            else:
+                # no congestion → direct stream
+                self.pipeline.push_raw(packet)
 
             # =====================================================
-            # BURST DELAY
+            # BURST DELAY (network stall simulation)
             # =====================================================
             if self.config.enable_burst and np.random.rand() < self.config.burst_prob:
                 time.sleep(np.random.uniform(*self.config.burst_delay_ms) / 1000)
 
             # =====================================================
-            # STALL EVENT
+            # STALL EVENT (hard network pause)
             # =====================================================
             if self.config.enable_stall and np.random.rand() < self.config.stall_prob:
                 time.sleep(np.random.uniform(*self.config.stall_ms) / 1000)
 
             # =====================================================
-            # FLUSH BEHAVIOR
+            # TIMING CONTROL
             # =====================================================
-            if len(self._queue) >= self.config.flush_threshold:
-                while self._queue:
-                    self.pipeline.push_raw(self._queue.pop(0))
-            else:
-                self.pipeline.push_raw(packet)
-
-            # =====================================================
-            # TIMING CONTROL (jitter + pacing)
-            # =====================================================
-            self._next_t += dt
+            next_t += dt
 
             if self.config.enable_jitter:
-                jitter = np.random.normal(0, self.config.jitter_ms_std) / 1000
-                self._next_t += jitter
+                jitter = np.random.normal(
+                    0,
+                    self.config.jitter_ms_std / 1000
+                )
+            else:
+                jitter = 0.0
 
-            sleep_time = self._next_t - time.perf_counter()
+            target_t = next_t + jitter
+            sleep_time = target_t - time.perf_counter()
 
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-            # recovery if lagging badly
-            if time.perf_counter() - self._next_t > 1.0:
-                self._next_t = time.perf_counter()
+            # =====================================================
+            # RECOVERY
+            # =====================================================
+            now = time.perf_counter()
+            if now - next_t > 1.0:
+                next_t = now
                 
     def connect(self, device):
         print(device)
@@ -171,3 +188,28 @@ class SyntheticBLESource:
         
     def disconnect(self):
         self.ack = True
+        
+        
+    def _generate_simple(self, n):
+        sr = 12000
+        signal = np.zeros(n, dtype=np.float64)
+
+        amplitude = np.random.normal(2000, 500)
+        step = sr  # 1 seconde
+
+        # globale sample index (belangrijk!)
+        start_idx = self._gen_counter
+
+        for i in range(n):
+            global_idx = start_idx + i
+
+            # elke seconde een pulse
+            if global_idx % step == 0:
+                # korte pulse (5 samples decay)
+                for w in range(5):
+                    if i + w < n:
+                        signal[i + w] += amplitude * (1 - w / 5)
+
+        self._gen_counter += n
+        
+        return np.clip(signal, -8192, 8191).astype(np.int16)
