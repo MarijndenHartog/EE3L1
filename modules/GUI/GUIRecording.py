@@ -294,7 +294,7 @@ class RecordingTab(QtWidgets.QWidget):
         self.plot_counter += step    ################Remove later
         live_lag = np.round((self.pipeline.live_idx - self.plot_counter) / SAMPLE_RATE, 3)
         buffer_lag = np.round((self.pipeline.get_sample_index() - self.plot_counter) / SAMPLE_RATE, 3)
-        print(live_lag, buffer_lag, step, self.pipeline.proc.write_idx, self.pipeline.proc.read_idx + 36000)
+        #print(live_lag, buffer_lag, step, self.pipeline.proc.write_idx, self.pipeline.proc.read_idx + 36000)
 
         ch1 = data[:, 0]
         ch2 = data[:, 1]

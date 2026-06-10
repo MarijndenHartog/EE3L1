@@ -14,6 +14,7 @@ from bleak import BleakClient, BleakScanner
 # =========================
 NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 NUS_TX_CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+NUS_SERVICE_UUID  = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 
 
 # =========================
@@ -114,32 +115,60 @@ class BLESource:
             self._loop
         )
 
+
     async def _connect_by_address(self, address: str):
         self._set_state(DeviceState.CONNECTING)
 
-        device = await BleakScanner.find_device_by_address(address)
-
-        if not device:
-            if self.debug:
-                print("[BLE] device not found")
-            self._set_state(DeviceState.DISCONNECTED)
-            return
-
-        self._device = device
-        self._client = BleakClient(device)
-
         try:
+            # Direct verbinden op adres — geen scan nodig, stabieler op Windows
+            self._client = BleakClient(address)
             await self._client.connect()
+
+            if not self._client.is_connected:
+                if self.debug:
+                    print("[BLE] Failed to connect")
+                self._set_state(DeviceState.DISCONNECTED)
+                return
+
+            # Zoek de NUS service
+            nus_service = next(
+                (s for s in self._client.services if s.uuid.lower() == NUS_SERVICE_UUID.lower()),
+                None
+            )
+            if not nus_service:
+                if self.debug:
+                    print("[BLE] NUS service not found")
+                await self._client.disconnect()
+                self._set_state(DeviceState.DISCONNECTED)
+                return
+
+            # Zoek TX en RX characteristics
+            self.tx_char = next(
+                (c for c in nus_service.characteristics if c.uuid.lower() == NUS_TX_CHAR_UUID.lower()),
+                None
+            )
+            self.rx_char = next(
+                (c for c in nus_service.characteristics if c.uuid.lower() == NUS_RX_CHAR_UUID.lower()),
+                None
+            )
+
+            if not self.tx_char or not self.rx_char:
+                if self.debug:
+                    print("[BLE] TX or RX characteristic not found")
+                await self._client.disconnect()
+                self._set_state(DeviceState.DISCONNECTED)
+                return
+
+            await self._client.start_notify(self.tx_char, self._notification_handler)
+
             self._set_state(DeviceState.CONNECTED)
 
-            await self._client.start_notify(
-                NUS_TX_CHAR_UUID,
-                self._notification_handler
-            )
+            if self.debug:
+                print(f"[BLE] Connected to {address}")
 
         except Exception as e:
             if self.debug:
-                print("[BLE] connect error:", e)
+                print(f"[BLE] Connection error: {e}")
             self._set_state(DeviceState.DISCONNECTED)
 
     # =========================
@@ -154,7 +183,7 @@ class BLESource:
     async def _disconnect(self):
         if self._client and self._client.is_connected:
             try:
-                await self._client.stop_notify(NUS_TX_CHAR_UUID)
+                await self._client.stop_notify(self.tx_char)
                 await self._client.disconnect()
             except Exception as e:
                 if self.debug:
@@ -205,7 +234,7 @@ class BLESource:
             return
 
         try:
-            await self._client.write_gatt_char(NUS_RX_CHAR_UUID, data)
+            await self._client.write_gatt_char(self.rx_char.uuid, data)
         except Exception as e:
             if self.debug:
                 print("[BLE] write error:", e)
@@ -213,7 +242,8 @@ class BLESource:
     # =========================
     # NOTIFICATIONS
     # =========================
-    def _notification_handler(self, sender: int, data: bytes):
+    def _notification_handler(self, handle: int, data: bytes):
+        print("not")
         try:
             decoded = self._decode_packet(data)
 
@@ -297,11 +327,16 @@ if __name__ == "__main__":
 
     for d in devices:
         print(d.name, d.address)
+    
+    target = next(
+    (d for d in devices if d.name == "grompack" and d.address == "E1:66:FD:A9:7F:D8"),
+    None
+)
 
     # 2. connect to first device
-    ble.connect_to_address(devices[0].address)
+    ble.connect_to_address(target.address)
 
-    time.sleep(2)
+    time.sleep(5)
 
     # 3. start streaming
     ble.start_stream()
@@ -318,3 +353,4 @@ if __name__ == "__main__":
 
     # 6. disconnect
     ble.disconnect()
+    

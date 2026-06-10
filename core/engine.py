@@ -46,7 +46,9 @@ class RecordingEngine:
     def _init_source(self):   #########################Remove later
 
         if self.REAL_DATA:
-            self.source = BLESource(self.pipeline)
+            #self.source = BLESource(self.pipeline)
+            self.source = BLESource(pipeline="pipeline", debug=True)
+            self.source.connect_to_address("grompack")
         else:
             self.source = SyntheticBLESource(self.pipeline, config=self.config)  
 
@@ -60,16 +62,11 @@ class RecordingEngine:
         
         self.session_id = time.strftime("%Y%m%d_%H%M%S")
         
-        self.source.connect(device)
-        if not self.source.ack:
-            return
-        else:
-            self.source.ack = False
-            
-        self.source.cmd_start()
-        if not self.source.ack:
-            return
-        else: self.source.ack = False
+
+        if self.REAL_DATA: 
+            self.source.start_stream()
+        else: 
+            self.source.cmd_start()
                 
 
         self.marker_logger = MarkerLogger(
@@ -105,17 +102,11 @@ class RecordingEngine:
         if not self._running:
             return
         
-        self.source.cmd_stop()
-        if not self.source.ack:
-            return
-        else: self.source.ack = False
-            
+        if self.REAL_DATA: 
+            self.source.stop_stream()
+        else: 
+            self.source.cmd_stop()
 
-        self.source.disconnect()
-        if not self.source.ack:
-            return
-        else:
-            self.source.ack = False
 
         # STOP WRITER
         if self.writer:
