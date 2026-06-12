@@ -6,24 +6,23 @@ from buffers.raw_buffer import CircularBuffer
 from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
 from settings.settings import CHANNELS, SAMPLE_RATE, STIMULATION_TIME_MAX
-from workers.datasource.ble_source import BLESource, _FakePipeline
+from workers.datasource.ble_source import BLESource
 from core.marker_logger import MarkerLogger
 import time
 from simulations.stress_config import BLEStressConfig          ########################Remove later
+import asyncio 
 import struct
+import numpy as np
+from bleak import BleakClient, BleakScanner
 
 
-DEVICE_NAME        = "grompack"
-NUS_SERVICE_UUID   = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
-NUS_TX_CHAR_UUID   = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # device → host
-NUS_RX_CHAR_UUID   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # host → device
-
+DEVICE_NAME       = "grompack"
+NUS_TX_CHAR_UUID  = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+NUS_SERVICE_UUID  = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+NUS_RX_CHAR_UUID  = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 PACKED_BUFFER_SIZE = 240
 PACKET_FORMAT      = f"<I{PACKED_BUFFER_SIZE}s"
 PACKET_SIZE        = struct.calcsize(PACKET_FORMAT)
-
-MAX_POINTS         = 10000
-SAMPLE_RATE        = 12000
 
 
 class RecordingEngine:
@@ -60,7 +59,7 @@ class RecordingEngine:
     def _init_source(self):   #########################Remove later
 
         if self.REAL_DATA:
-            self.source = BLESource(_FakePipeline())
+            self.source = None
         else:
             self.source = SyntheticBLESource(self.pipeline, config=self.config)  
 
@@ -73,14 +72,7 @@ class RecordingEngine:
             return
         
         self.session_id = time.strftime("%Y%m%d_%H%M%S")
-        
-
-        if self.REAL_DATA: 
-            self.source.start()
-            print("Verbonden en streaming gestart.\n")
-        else: 
-            self.source.cmd_start()
-                
+        self._running = True
 
         self.marker_logger = MarkerLogger(
             output_prefix="session",
@@ -107,8 +99,16 @@ class RecordingEngine:
         self.writer.start()
         self.marker_logger.start()
         
-        self._running = True
 
+            
+        if self.REAL_DATA: 
+            self._ble_thread = threading.Thread(
+                target=self._start_ble_background,
+                daemon=True
+                )
+            self._ble_thread.start()
+        else: 
+            self.source.cmd_start()
         
     def stop(self):
 
@@ -116,8 +116,7 @@ class RecordingEngine:
             return
         
         if self.REAL_DATA: 
-            print("\n[TEST] stop()…")
-            self.source.stop()
+            self.source.stop_stream()
         else: 
             self.source.cmd_stop()
 
@@ -183,3 +182,100 @@ class RecordingEngine:
         
         self.source.cmd_burst(duration_ms, frequency_hz)
         self.last_stim_time = time.perf_counter()
+        
+    def _start_ble_background(self):
+        asyncio.run(self._ble_task())
+        
+    async def _ble_task(self):
+
+        print(f"Scanning for '{DEVICE_NAME}' …")
+
+        device = await BleakScanner.find_device_by_name(
+            DEVICE_NAME,
+            timeout=30.0
+        )
+        await asyncio.sleep(5)
+
+        if device is None:
+            print("[ERROR] device not found")
+            return
+
+        async with BleakClient(device) as client:
+
+            self._client = client
+            await client.get_services()
+            await asyncio.sleep(0.2)
+
+            nus_service = next(
+                (s for s in client.services
+                if s.uuid.lower() == NUS_SERVICE_UUID.lower()),
+                None
+            )
+
+            tx_char = next(
+                (c for c in nus_service.characteristics
+                if c.uuid.lower() == NUS_TX_CHAR_UUID.lower()),
+                None
+            )
+            print(tx_char.properties)
+
+            rx_char = next(
+                (c for c in nus_service.characteristics
+                if c.uuid.lower() == NUS_RX_CHAR_UUID.lower()),
+                None
+            )
+
+            await client.start_notify(tx_char, self._on_notify)
+            await client.write_gatt_char(rx_char, b'\x01')
+
+            while self._running:
+                await asyncio.sleep(0.05)
+
+            await client.stop_notify(tx_char)
+                
+
+    
+    def _decode_packet(self, data):
+
+        try:
+            header, packed = struct.unpack_from(PACKET_FORMAT, data)
+        except Exception as e:
+            return None
+
+        max_len = (len(packed) // 3) * 3
+        if max_len == 0:
+            return None
+
+        samples = np.empty((max_len // 3, 2), dtype=np.int16)
+
+        idx = 0
+
+        for i in range(0, max_len, 3):
+
+            b0 = packed[i]
+            b1 = packed[i + 1]
+            b2 = packed[i + 2]
+
+            s1 = b0 | ((b1 & 0x0F) << 8)
+            s2 = (b1 >> 4) | (b2 << 4)
+            s2 &= 0x0FFF
+
+            samples[idx, 0] = s1
+            samples[idx, 1] = s2
+            idx += 1
+
+        return samples
+    
+    def _on_notify(self, _handle: int, data: bytearray):
+
+        if len(data) < PACKET_SIZE:
+            return
+
+        samples = self._decode_packet(data)
+
+        if samples is None:
+            return
+
+        self.pipeline.push_raw(samples)
+    
+    
