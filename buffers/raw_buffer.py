@@ -38,6 +38,7 @@ class CircularBuffer:
             raise ValueError("Invalid shape: expected (N, channels)")
 
         n = len(samples)
+        print(n)
 
         with self.lock:
             wp = self.write_idx

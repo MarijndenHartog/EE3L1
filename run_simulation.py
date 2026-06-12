@@ -4,8 +4,16 @@ from PyQt5 import QtWidgets
 from core.engine import RecordingEngine
 from modules.GUI.GUIRecording import RecordingTab
 from simulations.stress_config import BLEStressConfig
+from buffers.raw_buffer import CircularBuffer
+from buffers.proc_buffer import ProcessedBuffer
+from core.pipeline import Pipeline
+
+from settings.settings import SAMPLE_RATE, CHANNELS
 
 def run():
+    raw_buffer = CircularBuffer(SAMPLE_RATE * 5, CHANNELS)
+    proc_buffer = ProcessedBuffer(SAMPLE_RATE * 15, CHANNELS)  
+    pipeline = Pipeline(raw_buffer, proc_buffer)
 
     app = QtWidgets.QApplication(sys.argv)
 

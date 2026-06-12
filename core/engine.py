@@ -30,6 +30,8 @@ class RecordingEngine:
 
     def __init__(
         self,
+        pipeline= None,
+        raw_buffer = None,
         sample_rate=SAMPLE_RATE,
         REAL_DATA=True,                           #########################Remove later, replace with real source
         channels=CHANNELS,
@@ -39,10 +41,15 @@ class RecordingEngine:
         self.sample_rate = sample_rate
         self.REAL_DATA = REAL_DATA                  #########################Remove later
         self.config = config                        ########################Remove later
-
-        self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
-        self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)  
-        self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
+        
+        if REAL_DATA:
+            self.pipeline = pipeline
+            self.raw_buffer = raw_buffer
+        else: 
+            self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
+            self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)  
+            self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
+        
 
         self.dsp_state = DSPState()
         self.dsp_state.update(-500, 500)
@@ -59,9 +66,7 @@ class RecordingEngine:
 
     def _init_source(self):   #########################Remove later
 
-        if self.REAL_DATA:
-            self.source = BLESource(_FakePipeline())
-        else:
+        if not self.REAL_DATA:
             self.source = SyntheticBLESource(self.pipeline, config=self.config)  
 
     # =========================================================
@@ -75,10 +80,7 @@ class RecordingEngine:
         self.session_id = time.strftime("%Y%m%d_%H%M%S")
         
 
-        if self.REAL_DATA: 
-            self.source.start()
-            print("Verbonden en streaming gestart.\n")
-        else: 
+        if not self.REAL_DATA: 
             self.source.cmd_start()
                 
 
@@ -115,10 +117,7 @@ class RecordingEngine:
         if not self._running:
             return
         
-        if self.REAL_DATA: 
-            print("\n[TEST] stop()…")
-            self.source.stop()
-        else: 
+        if not self.REAL_DATA: 
             self.source.cmd_stop()
 
 

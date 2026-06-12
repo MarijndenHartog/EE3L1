@@ -30,8 +30,10 @@ from modules.GUI.GUIRecording import RecordingTab
 
 
 class Main(QMainWindow, Ui_MainWindow):
-    def __init__(self):
+    def __init__(self, pipeline, raw_buffer):
         super(Main, self).__init__()
+        self.pipeline = pipeline
+        self.raw_buffer = raw_buffer
         self.setupUi(self)
         #exit code, if set to one will restart the program
         self.exitcode=0
@@ -82,7 +84,7 @@ class Main(QMainWindow, Ui_MainWindow):
         #All data
         self.SetFulldata()
         
-        self.engine = RecordingEngine()
+        self.engine = RecordingEngine(pipeline=self.pipeline, raw_buffer=self.raw_buffer)
         self.recording_tab = RecordingTab(self.engine)
         self.tabWidget.insertTab(0, self.recording_tab, "Recording")
         
