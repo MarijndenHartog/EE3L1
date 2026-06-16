@@ -1,333 +1,232 @@
-
 import asyncio
 import struct
-import sys
 import threading
-import time
-from typing import Callable
-
+import numpy as np
 from bleak import BleakClient, BleakScanner
 
-# ── Constanten ───────────────────────────────────────────────────────────────
-DEVICE_NAME        = "grompack"
-NUS_SERVICE_UUID   = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
-NUS_TX_CHAR_UUID   = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # device → host
-NUS_RX_CHAR_UUID   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # host → device
-
-PACKED_BUFFER_SIZE = 240
-PACKET_FORMAT      = f"<I{PACKED_BUFFER_SIZE}s"
-PACKET_SIZE        = struct.calcsize(PACKET_FORMAT)
-
-MAX_POINTS         = 10000
-SAMPLE_RATE        = 12500
+from workers.datasource.source_abstraction import DataSource, SourceState
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Async kern
-# ─────────────────────────────────────────────────────────────────────────────
+class BLESource(threading.Thread, DataSource):
 
-class GrompackBLE:
-    """
-    Pure async BLE client voor de Grompack microcontroller.
+    DEVICE_NAME = "grompack"
 
-    Gebruik:
-        grom = GrompackBLE(on_data=mijn_callback)
-        await grom.connect()
-        await grom.start_stream()   # stuurt 0x01
-        ...
-        await grom.stop_stream()    # stuurt 0x02
-        await grom.disconnect()
+    NUS_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+    NUS_RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+    NUS_SERVICE_UUID  = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 
-    on_data(counter: int, raw: bytes) wordt aangeroepen voor elk ontvangen pakket.
-    """
+    PACKED_BUFFER_SIZE = 240
+    PACKET_FORMAT = f"<I{PACKED_BUFFER_SIZE}s"
+    PACKET_SIZE = struct.calcsize(PACKET_FORMAT)
 
-    def __init__(self, on_data: Callable[[int, bytes], None] | None = None) -> None:
-        self._client: BleakClient | None = None
-        self._tx_handle: int | None = None
-        self._rx_handle: int | None = None
-        self._disconnected = asyncio.Event()
-        self._on_data = on_data
+    def __init__(self, pipeline, channels=2):
+        super().__init__(daemon=True)
 
-        self.packet_count: int = 0
-        self.samples: list[int] = []
+        self.pipeline = pipeline
+        self.channels = channels
 
-    # ── Verbinding ────────────────────────────────────────────────────────────
+        # lifecycle (thread NEVER stops)
+        self._running = True
 
-    async def connect(self, retries: int = 3) -> None:
-        """Scan naar het apparaat en verbind met retry-logica."""
-        device = await self._scan()
+        # streaming control (toggle only)
+        self._streaming = False
 
-        for attempt in range(1, retries + 1):
-            print(f"Verbindingspoging {attempt}/{retries}…")
-            client = BleakClient(
-                device.address,
-                timeout=20.0,
-                disconnected_callback=self._on_disconnect,
-                winrt={"use_cached_services": False},
+        # asyncio runtime
+        self.loop = None
+        self.client = None
+
+        # sync
+        self.ack_start = threading.Event()
+        self.ack_stop = threading.Event()
+        self.connected = threading.Event()
+
+        self.state = SourceState.DISCONNECTED
+
+        print("BLESource (persistent) initialized")
+
+    # =========================================================
+    # COMMANDS (ONLY TOGGLES, NO THREAD LIFECYCLE)
+    # =========================================================
+    def cmd_start(self):
+        print("BLESource: START")
+
+        self.connected.wait(timeout=10.0)
+
+        self._streaming = True
+        self.state = SourceState.STREAMING
+
+        if self.loop and self.client:
+            asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.NUS_RX_UUID, b"\x01"),
+                self.loop
             )
-            try:
-                await client.connect()
-                if client.is_connected:
-                    self._client = client
-                    print(f"Verbonden met {device.name}  [{device.address}]")
-                    await asyncio.sleep(2.0)        # Windows BLE-stack stabiliseren
-                    await self._resolve_characteristics()
-                    return
-            except Exception as e:
-                print(f"[WARN] Poging {attempt} mislukt: {e}")
-                try:
-                    await client.disconnect()
-                except Exception:
-                    pass
-            await asyncio.sleep(2.0)
 
-        raise RuntimeError(f"Kon niet verbinden met '{DEVICE_NAME}' na {retries} pogingen.")
+        self.ack_start.set()
 
-    async def disconnect(self) -> None:
-        """Verbreek de BLE-verbinding netjes."""
-        if self._client and self._client.is_connected:
-            try:
-                await self._client.disconnect()
-                print("Verbinding verbroken.")
-            except Exception as e:
-                print(f"[WARN] Fout bij verbreken: {e}")
-        self._client = None
+    def cmd_stop(self):
+        print("BLESource: STOP")
 
-    # ── Commando's ────────────────────────────────────────────────────────────
+        self._streaming = False
+        self.state = SourceState.READY
 
-    async def start_stream(self) -> None:
-        """Notificaties inschakelen + 0x01 sturen → microcontroller start streaming."""
-        await self._enable_notifications()
-        await self._write(bytes([0x01]))
-        print("Start-commando (0x01) verstuurd.")
+        if self.loop and self.client:
+            asyncio.run_coroutine_threadsafe(
+                self.client.write_gatt_char(self.NUS_RX_UUID, b"\x02"),
+                self.loop
+            )
 
-    async def stop_stream(self) -> None:
-        """0x02 sturen → microcontroller stopt streaming + notificaties uit."""
-        await self._write(bytes([0x02]))
-        print("Stop-commando (0x02) verstuurd.")
-        await self._disable_notifications()
+        self.ack_stop.set()
 
-    async def send_command(self, cmd: bytes) -> None:
-        """Stuur een willekeurig commando naar de microcontroller."""
-        await self._write(cmd)
-        print(f"Commando verstuurd: {cmd.hex()}")
+    # =========================================================
+    # DECODER
+    # =========================================================
+    def _decode_packet(self, data):
+        if len(data) < self.PACKET_SIZE:
+            return None
 
-    async def cmd_burst(self, duration_ms: int, frequency_hz: float) -> None:
-        """
-        Stuur een stimulatieburst naar de microcontroller.
-        Pakketformaat: [0x03, duration_lo, duration_hi, freq_lo, freq_hi]
-        Pas dit aan op het werkelijke firmware-protocol.
-        """
-        dur  = int(duration_ms)  & 0xFFFF
-        freq = int(frequency_hz) & 0xFFFF
-        payload = bytes([
-            0x03,
-            dur  & 0xFF, (dur  >> 8) & 0xFF,
-            freq & 0xFF, (freq >> 8) & 0xFF,
-        ])
-        await self._write(payload)
-        print(f"Burst-commando verstuurd: {duration_ms}ms @ {frequency_hz}Hz")
+        _, packed = struct.unpack_from(self.PACKET_FORMAT, data)
 
-    # ── Wachten op data ───────────────────────────────────────────────────────
+        samples = []
+        for i in range(0, self.PACKED_BUFFER_SIZE, 3):
+            b0 = packed[i]
+            b1 = packed[i + 1]
+            b2 = packed[i + 2]
 
-    async def receive(self) -> None:
-        """Wacht tot de verbinding wegvalt of de taak geannuleerd wordt."""
-        print("Ontvangen… (Ctrl+C om te stoppen)\n")
-        try:
-            await self._disconnected.wait()
-        except asyncio.CancelledError:
-            pass
+            s1 = b0 | ((b1 & 0x0F) << 8)
+            s2 = (b1 >> 4) | (b2 << 4)
+            s2 &= 0x0FFF
 
-    # ── Privé hulpfuncties ────────────────────────────────────────────────────
+            samples.append((s1, s2))
 
-    async def _scan(self, timeout: float = 10.0):
-        print(f"Scannen naar '{DEVICE_NAME}' (timeout {timeout}s)…")
-        device = await BleakScanner.find_device_by_name(DEVICE_NAME, timeout=timeout)
-        if device is None:
-            raise RuntimeError(f"Apparaat '{DEVICE_NAME}' niet gevonden.")
-        print(f"Gevonden: {device.name}  [{device.address}]")
-        return device
+        return np.asarray(samples, dtype=np.int16)
 
-    async def _resolve_characteristics(self) -> None:
-        assert self._client is not None
-        nus = next(
-            (s for s in self._client.services
-             if s.uuid.lower() == NUS_SERVICE_UUID.lower()),
-            None,
-        )
-        if nus is None:
-            available = [s.uuid for s in self._client.services]
-            raise RuntimeError(f"NUS-service niet gevonden. Beschikbaar: {available}")
+    # =========================================================
+    # CALLBACK
+    # =========================================================
+    def _on_notify(self, handle, data):
+        print("1")
 
-        tx = next((c for c in nus.characteristics
-                   if c.uuid.lower() == NUS_TX_CHAR_UUID.lower()), None)
-        rx = next((c for c in nus.characteristics
-                   if c.uuid.lower() == NUS_RX_CHAR_UUID.lower()), None)
+        if not self._streaming:
+            print("Received BLE packet while not streaming, ignoring")
+            print("2")
+            return
+        print("3")
 
-        if tx is None or rx is None:
-            raise RuntimeError("TX of RX characteristic niet gevonden in NUS-service.")
+        packet = self._decode_packet(data)
+        print("4")
 
-        self._tx_handle = tx.handle
-        self._rx_handle = rx.handle
-        print(f"TX handle: {self._tx_handle}  RX handle: {self._rx_handle}")
-
-    async def _enable_notifications(self) -> None:
-        assert self._client and self._tx_handle is not None
-        for attempt in range(1, 4):
-            try:
-                await self._client.start_notify(self._tx_handle, self._on_notification)
-                print("Notificaties ingeschakeld.")
-                return
-            except Exception as e:
-                print(f"[WARN] start_notify poging {attempt} mislukt: {e}")
-                if attempt == 3:
-                    raise RuntimeError("Kon notificaties niet inschakelen na 3 pogingen.")
-                await asyncio.sleep(1.5)
-
-    async def _disable_notifications(self) -> None:
-        if self._client and self._client.is_connected and self._tx_handle is not None:
-            try:
-                await self._client.stop_notify(self._tx_handle)
-            except Exception:
-                pass
-
-    async def _write(self, data: bytes) -> None:
-        if not self._client or not self._client.is_connected:
-            raise RuntimeError("Niet verbonden.")
-        await self._client.write_gatt_char(self._rx_handle, data, response=False)
-
-    def _on_disconnect(self, _client: BleakClient) -> None:
-        print("[WARN] BLE verbinding verbroken!")
-        self._disconnected.set()
-
-    def _on_notification(self, _sender, data: bytearray) -> None:
-        if len(data) < PACKET_SIZE:
-            print(f"[WARN] Kort pakket: {len(data)} bytes (verwacht {PACKET_SIZE})")
+        if packet is None:
             return
 
-        counter, raw_buffer = struct.unpack_from(PACKET_FORMAT, data)
-        self.packet_count += 1
+        self.pipeline.push_raw(packet)
 
-        print(
-            f"[PKT #{self.packet_count:>6}]  counter={counter:>10}  "
-            f"buffer={raw_buffer[:8].hex()}…  ({len(raw_buffer)} bytes)"
+    # =========================================================
+    # BLE LIFECYCLE (RUNS ONCE, FOREVER)
+    # =========================================================
+    async def _ble_loop(self):
+
+        self.state = SourceState.CONNECTING
+        print("Scanning BLE devices...")
+
+        device = await BleakScanner.find_device_by_name(
+            self.DEVICE_NAME,
+            timeout=10.0
         )
 
-        if self._on_data:
-            self._on_data(counter, raw_buffer)
+        if device is None:
+            self.state = SourceState.ERROR
+            raise RuntimeError("BLE device not found")
 
-        self.samples.extend(raw_buffer)
-        if len(self.samples) > MAX_POINTS:
-            del self.samples[: len(self.samples) - MAX_POINTS]
+        print(f"Found {device.name}")
 
+        self.state = SourceState.CONNECTING
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Synchrone wrapper — vervangt workers/datasource/ble_source.py
-# ─────────────────────────────────────────────────────────────────────────────
+        async with BleakClient(device.address) as client:
 
-class BLESource:
-    """
-    Synchrone wrapper om GrompackBLE.
-    Draait de async BLE-loop in een eigen achtergrondthread zodat de
-    RecordingEngine er gewone (niet-async) methoden op kan aanroepen.
+            self.client = client  # keep reference for cmd_start/cmd_stop
 
-    Interface die RecordingEngine verwacht:
-        source.start()
-        source.stop()
-        source.cmd_burst(duration_ms, frequency_hz)
-    """
+            print("BLE connected")
 
-    def __init__(self, pipeline) -> None:
-        self._pipeline = pipeline
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread: threading.Thread | None = None
-        self._ble: GrompackBLE | None = None
-        self._ready = threading.Event()
-        self._stop_flag = threading.Event()
+            self.state = SourceState.READY
+            self.connected.set()
 
-    # ── Publieke interface (synchroon) ────────────────────────────────────────
+            # IMPORTANT: ensure services are discovered (like tester implicitly does)
+            await client.get_services()
 
-    def start(self) -> None:
-        """Verbind met de microcontroller en start streaming (blokkeert tot verbonden)."""
-        self._stop_flag.clear()
-        self._ready.clear()
-        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="BLEThread")
-        self._thread.start()
-        if not self._ready.wait(timeout=30):
-            raise RuntimeError("BLE: verbinding niet tijdig tot stand gebracht.")
+            for svc in client.services:
+                print(f"  Service: {svc.uuid}")
+                for ch in svc.characteristics:
+                    print(f"    Char: {ch.uuid}  handle={ch.handle}  props={ch.properties}")
 
-    def stop(self) -> None:
-        """Stop streaming en verbreek de verbinding."""
-        self._stop_flag.set()
-        if self._loop and self._ble:
-            asyncio.run_coroutine_threadsafe(self._async_stop(), self._loop).result(timeout=5)
-        if self._thread:
-            self._thread.join(timeout=5)
-
-    def cmd_burst(self, duration_ms: int, frequency_hz: float) -> None:
-        """Stuur een stimulatieburst (thread-safe)."""
-        if self._loop and self._ble:
-            asyncio.run_coroutine_threadsafe(
-                self._ble.cmd_burst(duration_ms, frequency_hz), self._loop
+            nus_service = next(
+                (s for s in client.services if s.uuid.lower() == self.NUS_SERVICE_UUID.lower()),
+                None
             )
 
-    # ── Intern ────────────────────────────────────────────────────────────────
+            if not nus_service:
+                self.state = SourceState.ERROR
+                print("[ERROR] NUS service not found")
+                return
 
-    def _run_loop(self) -> None:
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-        try:
-            self._loop.run_until_complete(self._async_run())
-        finally:
-            self._loop.close()
+            tx_char = next(
+                (c for c in nus_service.characteristics
+                if c.uuid.lower() == self.NUS_TX_UUID.lower()),
+                None
+            )
 
-    async def _async_run(self) -> None:
-        self._ble = GrompackBLE(on_data=self._on_data)
-        await self._ble.connect()
-        await self._ble.start_stream()
-        self._ready.set()
+            if not tx_char:
+                self.state = SourceState.ERROR
+                print("[ERROR] TX characteristic not found")
+                return
 
-        while not self._stop_flag.is_set():
-            await asyncio.sleep(0.1)
+            print(f"Using TX char at handle {tx_char.handle}")
 
-    async def _async_stop(self) -> None:
-        if self._ble:
-            await self._ble.stop_stream()
-            await self._ble.disconnect()
+            await client.start_notify(tx_char, self._on_notify)
 
-    def _on_data(self, counter: int, raw: bytes) -> None:
-        self._pipeline.push_raw(counter, raw)
+            print("Subscribed. Streaming ...\n")
+            
 
+            try:
+                while self._running:
+                    await asyncio.sleep(0.1)
+            finally:
+                print("Stopping BLE...")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Standalone tests
-# ─────────────────────────────────────────────────────────────────────────────
+                try:
+                    await client.stop_notify(tx_char)
+                except Exception:
+                    pass
 
-async def _test_async() -> None:
-    """Test GrompackBLE direct (async)."""
-    grom = GrompackBLE()
-    await grom.connect()
-    await grom.start_stream()
-    await grom.receive()
-    await grom.stop_stream()
-    await grom.disconnect()
-    print(f"\nKlaar. Pakketten: {grom.packet_count}  Samples: {len(grom.samples)}")
+                self.state = SourceState.DISCONNECTED
 
 
-class _FakePipeline:
-    """Nep-pipeline: vangt push_raw() op en print elk pakket."""
+    # =========================================================
+    # THREAD ENTRY (RUN ONCE ONLY)
+    # =========================================================
+    def run(self):
 
-    def __init__(self):
-        self.packet_count = 0
-        self.byte_count = 0
+        print("BLESource thread started")
 
-    def push_raw(self, counter: int, raw: bytes) -> None:
-        self.packet_count += 1
-        self.byte_count += len(raw)
-        print(
-            f"[PIPELINE] pkt={self.packet_count:>5}  "
-            f"counter={counter:>10}  "
-            f"bytes={len(raw)}  "
-            f"totaal={self.byte_count}  "
-            f"eerste4={raw[:4].hex()}"
-        )
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+        self.loop.run_until_complete(self._ble_loop())
+
+    # =========================================================
+    # THREAD START (ONLY ONCE EVER)
+    # =========================================================
+    def start(self):
+        if self.is_alive():
+            return
+        super().start()
+
+    # =========================================================
+    # STOP = ONLY STOPS STREAM, NOT THREAD
+    # =========================================================
+    def stop(self):
+        print("BLESource STOP (soft)")
+
+        self.cmd_stop()
+
+        self._running = False
+        self.state = SourceState.DISCONNECTED

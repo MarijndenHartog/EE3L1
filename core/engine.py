@@ -1,29 +1,14 @@
-import threading
 from workers.datasource.synthetic_source import SyntheticBLESource
 from workers.dsp import DSPThread, DSPState
 from workers.writer import WAVWriter
 from buffers.raw_buffer import CircularBuffer
 from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
-from settings.settings import CHANNELS, SAMPLE_RATE, STIMULATION_TIME_MAX
-from workers.datasource.ble_source import BLESource, _FakePipeline
+from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE
+from workers.datasource.ble_source import BLESource
 from core.marker_logger import MarkerLogger
 import time
 from simulations.stress_config import BLEStressConfig          ########################Remove later
-import struct
-
-
-DEVICE_NAME        = "grompack"
-NUS_SERVICE_UUID   = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
-NUS_TX_CHAR_UUID   = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # device → host
-NUS_RX_CHAR_UUID   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # host → device
-
-PACKED_BUFFER_SIZE = 240
-PACKET_FORMAT      = f"<I{PACKED_BUFFER_SIZE}s"
-PACKET_SIZE        = struct.calcsize(PACKET_FORMAT)
-
-MAX_POINTS         = 10000
-SAMPLE_RATE        = 12000
 
 
 class RecordingEngine:
@@ -31,17 +16,19 @@ class RecordingEngine:
     def __init__(
         self,
         sample_rate=SAMPLE_RATE,
-        REAL_DATA=True,                           #########################Remove later, replace with real source
+        REAL_DATA=REAL_DATA,
         channels=CHANNELS,
         config=BLEStressConfig()                      ########################Remove later
     ):
             
         self.sample_rate = sample_rate
-        self.REAL_DATA = REAL_DATA                  #########################Remove later
-        self.config = config                        ########################Remove later
+        self.channels = channels
+        self.REAL_DATA = REAL_DATA
+        self.config = config
 
         self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
-        self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)  
+        self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)
+
         self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
 
         self.dsp_state = DSPState()
@@ -52,40 +39,39 @@ class RecordingEngine:
         self.writer = None
 
         self._running = False
-        self._connected = False
+
         self._init_source()
-        self.last_stim_time = 0.0
 
-
-    def _init_source(self):   #########################Remove later
+    def _init_source(self):
 
         if self.REAL_DATA:
-            self.source = BLESource(_FakePipeline())
+            self.source = BLESource(self.pipeline, channels=self.channels)
+            self.source.start()   
         else:
-            self.source = SyntheticBLESource(self.pipeline, config=self.config)  
-
-    # =========================================================
-    # START SESSION
-    # =========================================================
-    def start(self, device):
-
-        if self._running:
-            return
-        
-        self.session_id = time.strftime("%Y%m%d_%H%M%S")
-        
-
-        if self.REAL_DATA: 
+            self.source = SyntheticBLESource(self.pipeline, config=self.config)
             self.source.start()
-            print("Verbonden en streaming gestart.\n")
-        else: 
-            self.source.cmd_start()
-                
+
+
+    # ============================================================
+    # SESSION
+    # ============================================================
+    def start_session(self):
+
+        self.session_id = time.strftime("%Y%m%d_%H%M%S")
 
         self.marker_logger = MarkerLogger(
             output_prefix="session",
             session_id=self.session_id
         )
+    # =========================================================
+    # START SESSION
+    # =========================================================
+    def start(self):
+
+        if self._running:
+            return
+
+        self.start_session()
 
         self.dsp = DSPThread(
             ring_buffer=self.raw_buffer,
@@ -102,48 +88,30 @@ class RecordingEngine:
             output_prefix="session"
         )
 
-        # start other components
+        self.source.ack_start.clear()
+        self.source.cmd_start()
+
+        self.source.ack_start.wait(timeout=3.0)
+
         self.dsp.start()
         self.writer.start()
-        self.marker_logger.start()
-        
+
         self._running = True
 
-        
+    # =========================================================
+    # STOP SESSION
+    # =========================================================
     def stop(self):
 
         if not self._running:
             return
-        
-        if self.REAL_DATA: 
-            print("\n[TEST] stop()…")
-            self.source.stop()
-        else: 
-            self.source.cmd_stop()
 
+        self.source.cmd_stop()
 
-        # STOP WRITER
-        if self.writer:
-            self.writer.stop()
-            self.writer.join(timeout=2.0)
-            self.writer = None
-
-        # STOP MARKERS
-        if self.marker_logger:
-            self.marker_logger.stop()
-            self.marker_logger = None
-
-        # STOP DSP
-        if self.dsp:
-            self.dsp.stop()
-            self.dsp.join(timeout=2.0)
-            self.dsp = None
-
-
-        self.pipeline.reset()
+        self.dsp.stop()
+        self.writer.stop()
 
         self._running = False
-            
         
     # ============================================================
     # ACCESSORS
@@ -167,19 +135,3 @@ class RecordingEngine:
             marker_id,
             t
         )
-        
-    # ============================================================
-    # Stimulation
-    # ============================================================
-    def send_stimulation_burst(self, duration_ms, frequency_hz):
-
-        if not self._running or self.source is None:
-            return
-        
-        #debounce
-        if time.perf_counter() - self.last_stim_time < 2*(STIMULATION_TIME_MAX / 1000):
-            print("[WARNING] Stimulation command ignored due to debounce. Please wait before sending another stimulation.")
-            return
-        
-        self.source.cmd_burst(duration_ms, frequency_hz)
-        self.last_stim_time = time.perf_counter()
