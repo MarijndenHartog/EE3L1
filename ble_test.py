@@ -71,17 +71,23 @@ async def ble_task() -> None:
             cmd = cmd_msg["cmd"]
 
             if cmd == 0x01:
-                print("START")
+                await client.write_gatt_char(rx, b'\x01')
 
             elif cmd == 0x02:
-                print("STOP")
+                await client.write_gatt_char(rx, b'\x02')
 
             elif cmd == 0x03:
-                time = cmd_msg.get("time")
+                dur = cmd_msg.get("time")
                 freq = cmd_msg.get("freq")
-                print("STIMULATE", time, freq)
+                print("STIMULATE", dur, freq)
                 
-            
+                payload = bytes([
+                    0x03,
+                    dur  & 0xFF, (dur  >> 8) & 0xFF,
+                    freq & 0xFF, (freq >> 8) & 0xFF,
+                ])
+                await client.write_gatt_char(rx, payload)
+                           
 async def test():
     while True:
         cmd_msg = command_queue.get()
@@ -94,9 +100,9 @@ async def test():
             print("STOP")
 
         elif cmd == 0x03:
-            time = cmd_msg.get("time")
+            dur = cmd_msg.get("time")
             freq = cmd_msg.get("freq")
-            print("STIMULATE", time, freq)
+            print("STIMULATE", dur, freq)
     
 
 def start_ble_background(): 
