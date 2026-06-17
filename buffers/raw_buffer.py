@@ -1,5 +1,6 @@
 import numpy as np
 import threading
+from settings.settings import SAMPLE_RATE, CHANNELS
 
 
 class CircularBuffer:
@@ -127,6 +128,7 @@ class CircularBuffer:
             self.read_ptrs.clear()
             self.overruns.clear()
             
-        
+            
+raw_buf = CircularBuffer(SAMPLE_RATE, CHANNELS)    
             
     

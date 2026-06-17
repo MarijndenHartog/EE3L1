@@ -20,9 +20,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import sys
 from PyQt5.QtWidgets import QApplication
 from modules.GUI.GUIMain import Main
+from ble_test import ble_fix
 
 
 def start():
+    ble_fix()
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(True)
 
@@ -36,6 +38,6 @@ def start():
 
 if __name__ == "__main__":
     launch = 1
-
+    
     while launch:
         launch = start()

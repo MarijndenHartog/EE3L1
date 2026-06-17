@@ -1,7 +1,7 @@
 import threading
 import time
 import numpy as np
-from settings.settings import SAMPLE_RATE, PACKET_SIZE
+from settings.settings import SAMPLE_RATE, PACKED_BUFFER_SIZE
 from simulations.stress_config import BLEStressConfig
 
 
@@ -11,7 +11,7 @@ class SyntheticBLESource:
         self.config = config
 
         self.sample_rate = SAMPLE_RATE
-        self.packet_size = PACKET_SIZE
+        self.packet_size = PACKED_BUFFER_SIZE
 
         self._running = False
         self._streaming = False

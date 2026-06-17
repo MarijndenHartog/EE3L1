@@ -5,10 +5,11 @@ from buffers.raw_buffer import CircularBuffer
 from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
 from settings.settings import REAL_DATA, CHANNELS, SAMPLE_RATE
-from workers.datasource.ble_source import BLESource
 from core.marker_logger import MarkerLogger
 import time
 from simulations.stress_config import BLEStressConfig          ########################Remove later
+from buffers.raw_buffer import raw_buf
+from settings.states import command_queue
 
 
 class RecordingEngine:
@@ -26,7 +27,8 @@ class RecordingEngine:
         self.REAL_DATA = REAL_DATA
         self.config = config
 
-        self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
+        #self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
+        self.raw_buffer = raw_buf
         self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)
 
         self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
@@ -45,24 +47,15 @@ class RecordingEngine:
     def _init_source(self):
 
         if self.REAL_DATA:
-            self.source = BLESource(self.pipeline, channels=self.channels)
-            self.source.start()   
+            None
+            #self.source = BLESource(self.pipeline, channels=self.channels)
+            #self.source.start()   
         else:
-            self.source = SyntheticBLESource(self.pipeline, config=self.config)
-            self.source.start()
+            None
+            #self.source = SyntheticBLESource(self.pipeline, config=self.config)
+            #self.source.start()
 
 
-    # ============================================================
-    # SESSION
-    # ============================================================
-    def start_session(self):
-
-        self.session_id = time.strftime("%Y%m%d_%H%M%S")
-
-        self.marker_logger = MarkerLogger(
-            output_prefix="session",
-            session_id=self.session_id
-        )
     # =========================================================
     # START SESSION
     # =========================================================
@@ -71,7 +64,12 @@ class RecordingEngine:
         if self._running:
             return
 
-        self.start_session()
+        self.session_id = time.strftime("%Y%m%d_%H%M%S")
+
+        self.marker_logger = MarkerLogger(
+            output_prefix="session",
+            session_id=self.session_id
+        )
 
         self.dsp = DSPThread(
             ring_buffer=self.raw_buffer,
@@ -87,15 +85,14 @@ class RecordingEngine:
             flush_interval_seconds=5.0,
             output_prefix="session"
         )
-
-        self.source.ack_start.clear()
-        self.source.cmd_start()
-
-        self.source.ack_start.wait(timeout=3.0)
-
+        #self.source.ack_start.clear()
+        #self.source.cmd_start()
+        #self.source.ack_start.wait(timeout=3.0)
+        
         self.dsp.start()
         self.writer.start()
-
+        
+        command_queue.put({"cmd": 0x01})
         self._running = True
 
     # =========================================================
@@ -105,13 +102,25 @@ class RecordingEngine:
 
         if not self._running:
             return
-
-        self.source.cmd_stop()
+        
+        command_queue.put({"cmd": 0x02})
+        #self.source.cmd_stop()
 
         self.dsp.stop()
         self.writer.stop()
-
         self._running = False
+        
+    
+    def send_stimulation_burst(self, stim_time, stim_freq):
+        if not self._running:
+            return
+        
+        command_queue.put({
+            "cmd": 0x03,
+            "time": stim_time,
+            "freq": stim_freq
+        })
+        
         
     # ============================================================
     # ACCESSORS
@@ -135,3 +144,4 @@ class RecordingEngine:
             marker_id,
             t
         )
+        
