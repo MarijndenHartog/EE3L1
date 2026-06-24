@@ -55,7 +55,6 @@ class WAVWriter(threading.Thread):
     # THREAD LOOP
     # -------------------------
     def run(self):
-        return
 
         try:
             self._filename = f"{self.output_prefix}_{self.session_id}.wav"

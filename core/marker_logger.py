@@ -31,7 +31,6 @@ class MarkerLogger:
 
     # ------------------------------------------------------------
     def _init_file(self):
-        return
         with open(self.filepath, "w") as f:
             f.write("# Marker ID,\tTime (s)\n")
 

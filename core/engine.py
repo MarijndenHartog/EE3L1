@@ -17,7 +17,7 @@ class RecordingEngine:
     def __init__(
         self,
         sample_rate=SAMPLE_RATE,
-        REAL_DATA=False,
+        REAL_DATA=True,
         channels=CHANNELS,
         config=BLEStressConfig()                      ########################Remove later
     ):
@@ -91,6 +91,7 @@ class RecordingEngine:
         
         self.dsp.start()
         self.writer.start()
+        self.marker_logger.start()
         
         command_queue.put({"cmd": 0x01})
         self._running = True
@@ -107,7 +108,8 @@ class RecordingEngine:
         
         if not self.REAL_DATA:
             self.source.cmd_stop()
-
+            
+        self.marker_logger.start()
         self.dsp.stop()
         self.writer.stop()
         self._running = False
@@ -145,7 +147,7 @@ class RecordingEngine:
         sample_idx = self.pipeline.get_sample_index()
 
         t = sample_idx / self.sample_rate
-
+        
         self.marker_logger.add(
             marker_id,
             t
