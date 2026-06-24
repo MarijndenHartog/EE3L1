@@ -31,3 +31,6 @@ class Pipeline:
         self.proc.reset()
         self.sample_index = 0
         self.live_idx
+        
+    def get_read_index(self):
+        return self.proc.get_read_index()

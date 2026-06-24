@@ -17,7 +17,7 @@ class RecordingEngine:
     def __init__(
         self,
         sample_rate=SAMPLE_RATE,
-        REAL_DATA=REAL_DATA,
+        REAL_DATA=False,
         channels=CHANNELS,
         config=BLEStressConfig()                      ########################Remove later
     ):
@@ -29,12 +29,13 @@ class RecordingEngine:
 
         #self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
         self.raw_buffer = raw_buf
+        if not REAL_DATA:
+            self.raw_buffer = CircularBuffer(sample_rate * 5, channels)
         self.proc_buffer = ProcessedBuffer(sample_rate * 15, channels)
 
         self.pipeline = Pipeline(self.raw_buffer, self.proc_buffer)
 
         self.dsp_state = DSPState()
-        self.dsp_state.update(-500, 500)
 
         self.source = None
         self.dsp = None
@@ -51,9 +52,7 @@ class RecordingEngine:
             #self.source = BLESource(self.pipeline, channels=self.channels)
             #self.source.start()   
         else:
-            None
-            #self.source = SyntheticBLESource(self.pipeline, config=self.config)
-            #self.source.start()
+            self.source = SyntheticBLESource(self.pipeline, config=self.config)
 
 
     # =========================================================
@@ -85,9 +84,10 @@ class RecordingEngine:
             flush_interval_seconds=5.0,
             output_prefix="session"
         )
-        #self.source.ack_start.clear()
-        #self.source.cmd_start()
-        #self.source.ack_start.wait(timeout=3.0)
+        
+        if not self.REAL_DATA:
+            self.source.cmd_start()
+        
         
         self.dsp.start()
         self.writer.start()
@@ -104,13 +104,19 @@ class RecordingEngine:
             return
         
         command_queue.put({"cmd": 0x02})
-        #self.source.cmd_stop()
+        
+        if not self.REAL_DATA:
+            self.source.cmd_stop()
 
         self.dsp.stop()
         self.writer.stop()
         self._running = False
+        self.pipeline.reset()
         
     
+    # =========================================================
+    # SEND STIMULATION
+    # =========================================================
     def send_stimulation_burst(self, stim_time, stim_freq):
         if not self._running:
             return
@@ -144,4 +150,15 @@ class RecordingEngine:
             marker_id,
             t
         )
+        
+    # =========================================================
+    # BANDPASS FUNCTIONS
+    # =========================================================
+    
+    def set_bandpass(self, low, high):
+        self.dsp_state.update(low, high)
+        
+    def toggle_bandpass(self, enabled):
+        self.dsp_state.set_enabled(enabled)
+        
         

@@ -63,7 +63,7 @@ class CircularBuffer:
     # -------------------------
     # VECTORISED READ
     # -------------------------
-    def read(self, name, max_samples=1024):
+    def read(self, name, max_samples=6000):
         with self.lock:
             if name not in self.read_ptrs:
                 self.read_ptrs[name] = self.write_idx
@@ -104,8 +104,14 @@ class CircularBuffer:
 
         with self.lock:
             self.read_ptrs[name] = new_rp
+            
+        signal = out.copy()
+        signal = signal.astype(np.float32)
+        signal = signal - 2048.0
+        signal = signal / 2048.0
+        signal = signal * (450000.0 / 2089.0)
 
-        return out.copy()
+        return signal
 
     # -------------------------
     # utility: lag detection

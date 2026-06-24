@@ -12,7 +12,7 @@ def run():
     # 1. engine (real or simulated)
     configuration = BLEStressConfig(
         enable_jitter=True,
-        jitter_ms_std=10,
+        jitter_ms_std=3,
 
         # =========================
         # PACKET LOSS
@@ -23,7 +23,7 @@ def run():
         # =========================
         # BURST (micro congestion)
         # =========================
-        enable_burst=True,
+        enable_burst=False,
         burst_prob=0.02,
         burst_delay_ms=(5, 30),
 
@@ -31,15 +31,13 @@ def run():
         # STALL (BLE freeze events)
         # =========================
         enable_stall=True,
-        stall_prob=0.01,
-        stall_ms=(50, 200),
+        stall_prob=0.005,
+        stall_ms=(100, 200),
 
         # =========================
         # QUEUE / CONGESTION
         # =========================
-        enable_congestion=True,
-        max_queue_size=10,
-        flush_threshold=3,
+        enable_congestion=False
         
         )  # clean config for testing
     

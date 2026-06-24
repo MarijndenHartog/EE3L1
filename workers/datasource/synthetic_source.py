@@ -3,18 +3,23 @@ import time
 import numpy as np
 from settings.settings import SAMPLE_RATE, PACKED_BUFFER_SIZE
 from simulations.stress_config import BLEStressConfig
+import wave
 
 
 class SyntheticBLESource:
     def __init__(self, pipeline, config=BLEStressConfig()):
         self.pipeline = pipeline
         self.config = config
+        self._queue = []
+        self._network_credit = 0.0
 
         self.sample_rate = SAMPLE_RATE
         self.packet_size = PACKED_BUFFER_SIZE
 
         self._running = False
         self._streaming = False
+        self._recovery_factor = 1.0
+        self._recovery_decay = 0.97
         
         self.ack = False
 
@@ -94,6 +99,7 @@ class SyntheticBLESource:
     # WORKER LOOP
     # =========================================================
     def _run_loop(self):
+
         dt = self.packet_size / self.sample_rate
         next_t = time.perf_counter()
 
@@ -107,54 +113,121 @@ class SyntheticBLESource:
             # =====================================================
             # PACKET GENERATION
             # =====================================================
-            packet = np.stack([
-                self._generate_simple(self.packet_size),
-                self._generate(self.packet_size)
-            ], axis=1)
-            
+            packet = np.stack(
+                [
+                    self._generate_simple(self.packet_size),
+                    self._generate_wav(self.packet_size),
+                ],
+                axis=1,
+            )
+
             self.pipeline.live_counter()
 
             # =====================================================
-            # PACKET LOSS (before queue)
+            # PACKET LOSS (source-side drop)
             # =====================================================
-            if self.config.enable_packet_loss:
-                if np.random.rand() < self.config.packet_loss_prob:
-                    continue
-                
-            
+            if (
+                self.config.enable_packet_loss
+                and np.random.rand() < self.config.packet_loss_prob
+            ):
+                continue
+
             # =====================================================
-            # CONGESTION QUEUE (single source of truth)
+            # NETWORK / CONGESTION MODEL
             # =====================================================
             if self.config.enable_congestion:
+
+                # Packet enters network buffer
                 self._queue.append(packet)
 
-                # simulate congestion drop (queue overflow)
-                if len(self._queue) > self.config.max_queue_size:
+                # Buffer overflow -> drop oldest packet
+                while len(self._queue) > self.config.max_queue_size:
                     self._queue.pop(0)
 
-                # optional: only release when “network allows”
-                if len(self._queue) < self.config.flush_threshold:
-                    # still congested → DO NOT SEND
-                    pass
+                # -------------------------------------------------
+                # Current network throughput
+                # -------------------------------------------------
+
+                congested = (
+                    np.random.rand() < self.config.congestion_prob
+                )
+
+                if congested:
+                    # During congestion:
+                    # network delivers less than realtime
+                    network_rate = np.random.uniform(
+                        self.config.congested_rate_min,
+                        self.config.congested_rate_max,
+                    )
                 else:
-                    # release ONE packet (not full flush)
-                    self.pipeline.push_raw(self._queue.pop(0))
+                    # Recovery / normal operation:
+                    # network may deliver faster than realtime
+                    network_rate = np.random.uniform(
+                        self.config.recovery_rate_min,
+                        self.config.recovery_rate_max,
+                    )
+
+                self._network_credit += network_rate
+
+                # -------------------------------------------------
+                # Release packets according to available bandwidth
+                # -------------------------------------------------
+
+                while (
+                    self._network_credit >= 1.0
+                    and len(self._queue) > 0
+                ):
+                    pkt = self._queue.pop(0)
+
+                    send_count = int(round(self._recovery_factor))
+
+                    for _ in range(send_count):
+                        self.pipeline.push_raw(pkt)
+
+                    self._network_credit -= 1.0
 
             else:
-                # no congestion → direct stream
-                self.pipeline.push_raw(packet)
+                # Direct transmission
+                send_count = int(round(self._recovery_factor))
+
+                for _ in range(send_count):
+                    self.pipeline.push_raw(packet)
 
             # =====================================================
-            # BURST DELAY (network stall simulation)
+            # BURST DELAY
+            # (temporary network pause)
             # =====================================================
-            if self.config.enable_burst and np.random.rand() < self.config.burst_prob:
-                time.sleep(np.random.uniform(*self.config.burst_delay_ms) / 1000)
+            if (
+                self.config.enable_burst
+                and np.random.rand() < self.config.burst_prob
+            ):
+                time.sleep(
+                    np.random.uniform(
+                        *self.config.burst_delay_ms
+                    )
+                    / 1000.0
+                )
 
             # =====================================================
-            # STALL EVENT (hard network pause)
+            # STALL EVENT
+            # (hard network freeze)
             # =====================================================
-            if self.config.enable_stall and np.random.rand() < self.config.stall_prob:
-                time.sleep(np.random.uniform(*self.config.stall_ms) / 1000)
+            if (
+                self.config.enable_stall
+                and np.random.rand() < self.config.stall_prob
+            ):
+                stall_duration = np.random.uniform(
+                    *self.config.stall_ms
+                ) / 1000.0
+                
+                print("stall")
+
+                time.sleep(stall_duration)
+
+                self._recovery_factor = min(
+                    self._recovery_factor + 3.0,
+                    6.0  # cap zodat het niet explodeert
+                )
 
             # =====================================================
             # TIMING CONTROL
@@ -163,25 +236,36 @@ class SyntheticBLESource:
 
             if self.config.enable_jitter:
                 jitter = np.random.normal(
-                    0,
-                    self.config.jitter_ms_std / 1000
+                    0.0,
+                    self.config.jitter_ms_std / 1000.0,
                 )
             else:
                 jitter = 0.0
 
             target_t = next_t + jitter
-            sleep_time = target_t - time.perf_counter()
+
+            sleep_time = (
+                target_t - time.perf_counter()
+            )
 
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
             # =====================================================
             # RECOVERY
+            # Avoid runaway backlog after long stalls
             # =====================================================
             now = time.perf_counter()
+
             if now - next_t > 1.0:
                 next_t = now
                 
+            self._recovery_factor *= self._recovery_decay
+
+            if self._recovery_factor < 1.0:
+                self._recovery_factor = 1.0
+                
+                            
     def connect(self, device):
         print(device)
         self.ack = True
@@ -213,3 +297,53 @@ class SyntheticBLESource:
         self._gen_counter += n
         
         return np.clip(signal, -8192, 8191).astype(np.int16)
+    
+
+
+    def _generate_wav(self, n):
+
+        # open WAV (1x doen in __init__ is beter, maar hier simpel gehouden)
+        if not hasattr(self, "_wav"):
+            self._wav = wave.open("rec_ch2_withoutstim.wav", "rb")
+            self._wav_sr = self._wav.getframerate()
+            self._wav_channels = self._wav.getnchannels()
+            self._wav_length = self._wav.getnframes()
+
+        # globale positie in audio stream
+        start = self._gen_counter
+
+        # wrap-around (loop audio)
+        start = start % self._wav_length
+
+        # lees samples
+        self._wav.setpos(start)
+        raw = self._wav.readframes(n)
+
+        # convert bytes -> int16
+        audio = np.frombuffer(raw, dtype=np.int16)
+
+        # stereo → mono (indien nodig)
+        if self._wav_channels == 2:
+            audio = audio.reshape(-1, 2).mean(axis=1).astype(np.int16)
+
+        # als we aan het einde zitten → wrap fill
+        if len(audio) < n:
+            self._wav.setpos(0)
+            raw2 = self._wav.readframes(n - len(audio))
+            audio2 = np.frombuffer(raw2, dtype=np.int16)
+
+            if self._wav_channels == 2:
+                audio2 = audio2.reshape(-1, 2).mean(axis=1).astype(np.int16)
+
+            audio = np.concatenate([audio, audio2])
+
+        self._gen_counter += n
+
+        audio = audio.astype(np.int32)
+        # 1) map int16 (-32768..32767) → 0..65535
+        audio = audio + 32768
+        # 2) downscale naar 12-bit range (0..4095)
+        audio = audio >> 4
+        # 3) clamp safety
+        audio = np.clip(audio, 0, 4095)
+        return audio.astype(np.uint16)

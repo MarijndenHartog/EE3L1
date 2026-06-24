@@ -75,21 +75,28 @@ class RecordingTab(QtWidgets.QWidget):
         pg.setConfigOptions(antialias=False)
 
         layout = QtWidgets.QHBoxLayout(self)
-
         controls = QtWidgets.QVBoxLayout()
 
-        ## Control buttons
-        # Start/Stop button
+        # ============================================================
+        # 1. START / TRIGGER MODE (los basisblok)
+        # ============================================================
         self.btn = QtWidgets.QPushButton("Start")
         self.btn.setCheckable(True)
         self.btn.clicked.connect(self.toggle)
 
-        # Trigger mode toggle button
         self.trigger_btn = QtWidgets.QPushButton("Trigger Mode: OFF")
         self.trigger_btn.setCheckable(True)
         self.trigger_btn.clicked.connect(self.toggle_trigger_mode)
 
-        # Trigger threshold controls
+        base_box = QtWidgets.QGroupBox("Acquisition")
+        base_layout = QtWidgets.QVBoxLayout()
+        base_layout.addWidget(self.btn)
+        base_layout.addWidget(self.trigger_btn)
+        base_box.setLayout(base_layout)
+
+        # ============================================================
+        # 2. TRIGGER SETTINGS
+        # ============================================================
         self.upper_box = QtWidgets.QSpinBox()
         self.upper_box.setRange(-100000, 100000)
         self.upper_box.setValue(self.upper_threshold)
@@ -99,58 +106,116 @@ class RecordingTab(QtWidgets.QWidget):
         self.lower_box.setRange(-100000, 100000)
         self.lower_box.setValue(self.lower_threshold)
         self.lower_box.valueChanged.connect(self.update_thresholds)
+
+        trigger_box = QtWidgets.QGroupBox("Trigger Settings")
+        trigger_layout = QtWidgets.QFormLayout()
+        trigger_layout.addRow("Upper threshold", self.upper_box)
+        trigger_layout.addRow("Lower threshold", self.lower_box)
+        trigger_box.setLayout(trigger_layout)
+
+
+        # ============================================================
+        # 3. BANDPASS FILTER SETTINGS
+        # ============================================================
+        self.bandpass_enable_btn = QtWidgets.QPushButton("Bandpass: OFF")
+        self.bandpass_enable_btn.setCheckable(True)
+        self.bandpass_enable_btn.clicked.connect(self.toggle_bandpass)
+        self.bandpass_enable_btn.setStyleSheet("""
+            QPushButton:checked {
+                background-color: #2ecc71;
+                color: white;
+            }
+            """)
+
+        self.bandpass_lower_box = QtWidgets.QSpinBox()
+        self.bandpass_lower_box.setRange(100, 1000)
+        self.bandpass_lower_box.setValue(300)
+        self.bandpass_lower_box.setSuffix(" Hz")
+
+        self.bandpass_upper_box = QtWidgets.QSpinBox()
+        self.bandpass_upper_box.setRange(2000, 6000)
+        self.bandpass_upper_box.setValue(4000)
+        self.bandpass_upper_box.setSuffix(" Hz")
+
+        self.bandpass_lower_box.valueChanged.connect(self.update_bandpass)
+        self.bandpass_upper_box.valueChanged.connect(self.update_bandpass)
+
+        bandpass_box = QtWidgets.QGroupBox("Bandpass Filter")
+        bandpass_layout = QtWidgets.QFormLayout()
+
+        bandpass_layout.addRow(self.bandpass_enable_btn)
         
-        # Stimulation time and frequency controls 
+        bandpass_layout.addRow("Lower cutoff", self.bandpass_lower_box)
+        bandpass_layout.addRow("Upper cutoff", self.bandpass_upper_box)
+
+        bandpass_box.setLayout(bandpass_layout)
+
+        # ============================================================
+        # 4. STIMULATION SETTINGS
+        # ============================================================
         self.stim_time_box = QtWidgets.QSpinBox()
         self.stim_time_box.setRange(0, self.stim_time_max)
         self.stim_time_box.setValue(self.stim_time)
         self.stim_time_box.valueChanged.connect(self.update_stimulation)
-        self.stim_button = QtWidgets.QPushButton("Send Stimulation")
-        self.stim_button.clicked.connect(lambda: self.engine.send_stimulation_burst(self.stim_time, self.stim_freq))
-        
+
         self.stim_freq_box = QtWidgets.QSpinBox()
         self.stim_freq_box.setRange(0, self.stim_freq_max)
         self.stim_freq_box.setValue(self.stim_freq)
         self.stim_freq_box.valueChanged.connect(self.update_stimulation)
-        
-        # BLE device
+
+        self.stim_button = QtWidgets.QPushButton("Send Stimulation")
+        self.stim_button.clicked.connect(
+            lambda: self.engine.send_stimulation_burst(self.stim_time, self.stim_freq)
+        )
+
+        stim_box = QtWidgets.QGroupBox("Stimulation")
+        stim_layout = QtWidgets.QFormLayout()
+        stim_layout.addRow("Time (ms)", self.stim_time_box)
+        stim_layout.addRow("Frequency (Hz)", self.stim_freq_box)
+        stim_layout.addRow(self.stim_button)
+        stim_box.setLayout(stim_layout)
+
+        # ============================================================
+        # 5. BLE SETTINGS
+        # ============================================================
         self.ble_device_input = QtWidgets.QLineEdit()
         self.ble_device_input.setPlaceholderText("Enter BLE device name")
 
         self.ble_connect_btn = QtWidgets.QPushButton("Connect BLE")
         self.ble_connect_btn.clicked.connect(self.connect_ble_device)
 
-        self.ble_status = QtWidgets.QLabel("Status: DISCONNECTED")
-        self.ble_status.setStyleSheet("color: red;")
-        
-        
-        # Add controls to layout
-        controls.addWidget(self.btn)
-        controls.addWidget(self.trigger_btn)
-        controls.addWidget(QtWidgets.QLabel("Upper threshold"))
-        controls.addWidget(self.upper_box)
-        controls.addWidget(QtWidgets.QLabel("Lower threshold"))
-        controls.addWidget(self.lower_box)
-        controls.addWidget(QtWidgets.QLabel("Stimulation Time"))
-        controls.addWidget(self.stim_time_box)
-        controls.addWidget(QtWidgets.QLabel("Stimulation Frequency"))
-        controls.addWidget(self.stim_freq_box)
-        controls.addWidget(self.stim_button)
-        controls.addWidget(self.ble_device_input)
-        controls.addWidget(self.ble_connect_btn)
-        controls.addWidget(self.ble_status)
+        self.ble_status = QtWidgets.QLabel("Status: CONNECTED")
+        self.ble_status.setStyleSheet("color: green;")
+
+        ble_box = QtWidgets.QGroupBox("BLE Device")
+        ble_layout = QtWidgets.QVBoxLayout()
+        ble_layout.addWidget(self.ble_device_input)
+        ble_layout.addWidget(self.ble_connect_btn)
+        ble_layout.addWidget(self.ble_status)
+        ble_box.setLayout(ble_layout)
+
+        # ============================================================
+        # LEFT PANEL LAYOUT
+        # ============================================================
+        controls.addWidget(base_box)
+        controls.addWidget(trigger_box)
+        controls.addWidget(bandpass_box)
+        controls.addWidget(stim_box)
+        controls.addWidget(ble_box)
         controls.addStretch()
 
-        # Add plots
+        # ============================================================
+        # PLOTS 
+        # ============================================================
         pg_layout = QtWidgets.QVBoxLayout()
         self.plot1 = pg.PlotWidget(title="Channel 1")
         self.plot2 = pg.PlotWidget(title="Channel 2")
 
-        self.curve1 = self.plot1.plot(pen='y')
-        self.curve2 = self.plot2.plot(pen='c')
+        self.curve1 = self.plot1.plot(pen=pg.mkPen('y', width=1))
+        self.curve2 = self.plot2.plot(pen=pg.mkPen('c', width=1))
 
         for p in (self.plot1, self.plot2):
-            p.setYRange(-1000, 2000)
+            p.setYRange(-120, 200)
             p.showGrid(x=True, y=True)
 
         self.upper_line1 = pg.InfiniteLine(angle=0, pen='r')
@@ -170,6 +235,22 @@ class RecordingTab(QtWidgets.QWidget):
 
         layout.addLayout(controls, 0)
         layout.addLayout(pg_layout, 1)
+        
+        self.setStyleSheet("""
+            QGroupBox {
+                border: 3px solid #2b2b2b;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding: 6px;
+            }
+
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                font-weight: bold;
+            }
+            """)
 
     # ============================================================
     # CONTROL
@@ -189,6 +270,12 @@ class RecordingTab(QtWidgets.QWidget):
         self.trigger_btn.setText(
             "Trigger Mode: ON" if self.trigger_mode else "Trigger Mode: OFF"
         )
+        if self.trigger_mode:
+            self.curve1.setPen(pg.mkPen('y', width=3))
+            self.curve2.setPen(pg.mkPen('c', width=3))
+        else:
+            self.curve1.setPen(pg.mkPen('y', width=1))
+            self.curve2.setPen(pg.mkPen('c', width=1))
 
     def update_thresholds(self):
         self.upper_threshold = self.upper_box.value()
@@ -298,7 +385,7 @@ class RecordingTab(QtWidgets.QWidget):
 
         ch1 = data[:, 0]
         ch2 = data[:, 1]
-
+        
         # ========================================================
         # NORMAL MODE
         # ========================================================
@@ -370,3 +457,25 @@ class RecordingTab(QtWidgets.QWidget):
             
     def connect_ble_device(self):
         return
+    
+    # ============================================================
+    # BANDPASS
+    # ============================================================
+    def toggle_bandpass(self):
+        enabled = self.bandpass_enable_btn.isChecked()
+        self.bandpass_enable_btn.setText(
+            "Bandpass: ON" if enabled else "Bandpass: OFF"
+        )
+
+        # hier koppel je later je engine/filter pipeline
+        self.engine.toggle_bandpass(enabled)
+
+
+    def update_bandpass(self):
+        low = self.bandpass_lower_box.value()
+        high = self.bandpass_upper_box.value()
+
+        if low >= high:
+            return  # simpele safety check
+
+        self.engine.set_bandpass(low, high)

@@ -55,6 +55,7 @@ class WAVWriter(threading.Thread):
     # THREAD LOOP
     # -------------------------
     def run(self):
+        return
 
         try:
             self._filename = f"{self.output_prefix}_{self.session_id}.wav"
@@ -78,7 +79,7 @@ class WAVWriter(threading.Thread):
                             audio.astype(np.int16).tobytes()
                         )
 
-                time.sleep(0.005)
+                time.sleep(0.1)
 
         finally:
             if self._file:

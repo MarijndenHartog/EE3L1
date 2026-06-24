@@ -6,7 +6,7 @@ from buffers.raw_buffer import CircularBuffer
 from buffers.proc_buffer import ProcessedBuffer
 from core.pipeline import Pipeline
 from settings.settings import CHANNELS, SAMPLE_RATE, STIMULATION_TIME_MAX
-from workers.datasource.ble_source import BLESource
+from Atrash.ble_source import BLESource
 from core.marker_logger import MarkerLogger
 import time
 from simulations.stress_config import BLEStressConfig          ########################Remove later
